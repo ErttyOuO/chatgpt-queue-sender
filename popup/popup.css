@@ -1,0 +1,215 @@
+:root {
+  color-scheme: light dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --surface: #ffffff;
+  --surface-2: #f4f7f7;
+  --text: #12202b;
+  --muted: #66727c;
+  --line: rgba(19, 45, 54, 0.12);
+  --accent: #13a982;
+  --accent-soft: rgba(19, 169, 130, 0.14);
+  --shadow: 0 14px 36px rgba(14, 30, 37, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #121a22;
+    --surface-2: #19232c;
+    --text: #f4f7f8;
+    --muted: #a9b3bb;
+    --line: rgba(255, 255, 255, 0.10);
+    --accent: #39d4ae;
+    --accent-soft: rgba(57, 212, 174, 0.14);
+    --shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-width: 350px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+button, input { font: inherit; }
+
+.popup-shell {
+  width: 350px;
+  padding: 16px;
+}
+
+.app-head {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.app-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.18);
+}
+
+h1 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.app-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.version {
+  align-self: start;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.panel {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+
+.setting-row {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 13px;
+  cursor: pointer;
+}
+
+.setting-row + .setting-row {
+  border-top: 1px solid var(--line);
+}
+
+.setting-row-main {
+  background: var(--accent-soft);
+}
+
+.setting-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setting-copy strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.setting-copy small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.switch {
+  flex: 0 0 auto;
+  position: relative;
+  width: 42px;
+  height: 24px;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: rgba(127, 139, 146, 0.42);
+  transition: background 150ms ease;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.24);
+  transition: transform 150ms ease;
+}
+
+.switch input:checked + .switch-track {
+  background: var(--accent);
+}
+
+.switch input:checked + .switch-track::after {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.subsettings[aria-disabled="true"] {
+  opacity: 0.48;
+}
+
+.test-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.test-button:hover { background: var(--accent-soft); }
+.test-button:disabled { opacity: 0.46; cursor: not-allowed; }
+
+.status {
+  min-height: 18px;
+  margin: 9px 2px 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.status[data-kind="ok"] { color: var(--accent); }
+.status[data-kind="error"] { color: #e05252; }
+
+.privacy-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-track::after { transition: none; }
+}

@@ -1,0 +1,5 @@
+{
+  "extensionName": { "message": "ChatGPT 訊息佇列助手" },
+  "extensionDescription": { "message": "在 ChatGPT 網頁版加入本機訊息佇列、自訂提示語、回覆完成提醒、Markdown 匯出、ZIP 對話封存與交接摘要功能。不收集資料。" },
+  "extensionActionTitle": { "message": "ChatGPT 訊息佇列助手" }
+}

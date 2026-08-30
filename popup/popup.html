@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChatGPT Queue Sender</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="popup-shell">
+    <header class="app-head">
+      <img src="../icons/icon-64.png" alt="" class="app-icon">
+      <div>
+        <h1>ChatGPT Queue Sender</h1>
+        <p data-cqs-zh="回覆完成提醒" data-cqs-en="Response completion alerts">回覆完成提醒</p>
+      </div>
+      <span class="version">v0.8.6</span>
+    </header>
+
+    <section class="panel">
+      <label class="setting-row setting-row-main" for="enabled">
+        <span class="setting-copy">
+          <strong data-cqs-zh="啟用完成提醒" data-cqs-en="Enable completion alerts">啟用完成提醒</strong>
+          <small data-cqs-zh="手動送出的訊息與佇列訊息都適用" data-cqs-en="Applies to manually sent and queued messages">手動送出的訊息與佇列訊息都適用</small>
+        </span>
+        <span class="switch">
+          <input id="enabled" type="checkbox">
+          <span class="switch-track" aria-hidden="true"></span>
+        </span>
+      </label>
+
+      <div class="subsettings" id="subsettings">
+        <label class="setting-row" for="desktop">
+          <span class="setting-copy">
+            <strong data-cqs-zh="Firefox 系統通知" data-cqs-en="Firefox system notifications">Firefox 系統通知</strong>
+            <small data-cqs-zh="在桌面顯示推播通知，首次開啟需要授權" data-cqs-en="Show desktop notifications; permission is requested the first time">在桌面顯示推播通知，首次開啟需要授權</small>
+          </span>
+          <span class="switch">
+            <input id="desktop" type="checkbox">
+            <span class="switch-track" aria-hidden="true"></span>
+          </span>
+        </label>
+
+        <label class="setting-row" for="sound">
+          <span class="setting-copy">
+            <strong data-cqs-zh="提示音" data-cqs-en="Notification sound">提示音</strong>
+            <small data-cqs-zh="回覆完成時播放一段柔和雙音提示" data-cqs-en="Play a gentle two-tone chime when a response finishes">回覆完成時播放一段柔和雙音提示</small>
+          </span>
+          <span class="switch">
+            <input id="sound" type="checkbox">
+            <span class="switch-track" aria-hidden="true"></span>
+          </span>
+        </label>
+
+        <label class="setting-row" for="onlyWhenHidden">
+          <span class="setting-copy">
+            <strong data-cqs-zh="離開分頁時才提醒" data-cqs-en="Notify only when the tab is inactive">離開分頁時才提醒</strong>
+            <small data-cqs-zh="正在觀看 ChatGPT 回覆時不打擾" data-cqs-en="Do not interrupt while you are watching ChatGPT respond">正在觀看 ChatGPT 回覆時不打擾</small>
+          </span>
+          <span class="switch">
+            <input id="onlyWhenHidden" type="checkbox">
+            <span class="switch-track" aria-hidden="true"></span>
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <button type="button" class="test-button" id="testButton" data-cqs-zh="測試提醒" data-cqs-en="Test alerts">測試提醒</button>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+    <p class="privacy-note" data-cqs-zh="所有設定與佇列內容只儲存在 Firefox 本機。" data-cqs-en="All settings and queue content are stored only in local Firefox storage.">所有設定與佇列內容只儲存在 Firefox 本機。</p>
+  </main>
+  <script src="../i18n.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

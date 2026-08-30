@@ -1,0 +1,5 @@
+{
+  "extensionName": { "message": "ChatGPT Queue Sender" },
+  "extensionDescription": { "message": "Adds a local prompt queue, reusable saved prompts, response alerts, Markdown export, ZIP conversation archives, and handoff summaries to ChatGPT web. No data collection." },
+  "extensionActionTitle": { "message": "ChatGPT Queue Sender" }
+}

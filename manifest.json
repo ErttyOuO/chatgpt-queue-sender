@@ -1,0 +1,85 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extensionName__",
+  "version": "0.8.6",
+  "description": "__MSG_extensionDescription__",
+  "permissions": [
+    "storage"
+  ],
+  "optional_permissions": [
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://*.chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://openai.com/*",
+    "https://*.openai.com/*",
+    "https://oaiusercontent.com/*",
+    "https://*.oaiusercontent.com/*"
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "64": "icons/icon-64.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "__MSG_extensionActionTitle__",
+    "default_area": "navbar",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "64": "icons/icon-64.png"
+    },
+    "default_popup": "popup/popup.html"
+  },
+  "background": {
+    "scripts": [
+      "i18n.js",
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "i18n.js",
+        "export/markdown-converter.js",
+        "export/zip-writer.js",
+        "export/conversation-export.js",
+        "export/conversation-api.js",
+        "export/archive-export.js",
+        "export/handoff-prompt.js",
+        "export/custom-prompts.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css",
+        "export/export-ui.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "chatgpt-queue-sender@local.dev",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  },
+  "default_locale": "en"
+}
