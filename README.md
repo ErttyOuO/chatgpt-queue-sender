@@ -1,300 +1,469 @@
-# ChatGPT Queue Sender for Firefox
+<div align="center">
+  <img src="./icons/icon-128.png" alt="ChatGPT Queue Sender icon" width="112" height="112">
 
-ChatGPT Queue Sender 是一個本機 Firefox WebExtension，會在 ChatGPT 網頁版加入訊息佇列、可重複使用的自訂提示語、回覆完成提醒、目前聊天室的 Markdown 匯出、完整附件 ZIP 封存與對話轉移工具。
+# ChatGPT Queue Sender
 
-你可以先排好多則提示詞，擴充功能會確認目前訊息已成功送出，等待 ChatGPT 回覆完成並恢復穩定可送出狀態後，再自動接續下一則。一般手動送出的訊息也可在完成時播放提示音或顯示 Firefox 系統通知。
+**Firefox 上的 ChatGPT 訊息佇列助手**  
+先排好提示詞，等待上一則回覆真正完成後，再安全地自動送出下一則。
 
-v0.8.6 針對 ChatGPT 長時間程式／工具工作補強佇列安全判定。即使原生 Stop 按鈕已消失、Send 按鈕重新出現，只要最新 assistant turn 仍有 Working／Thinking／Running 類動態狀態，或回答尚未出現完成控制，佇列都不會提早送出下一則。上傳圖片後的佇列按鈕也改為優先綁定 ChatGPT 穩定的 `composer-plus-btn`，不再誤黏到圖片預覽的 Remove／Delete 控制。
+[![Version](https://img.shields.io/badge/version-0.8.6-2f81f7)](#版本資訊)
+[![Firefox](https://img.shields.io/badge/Firefox-140%2B-FF7139?logo=firefoxbrowser&logoColor=white)](#安裝)
+[![Manifest](https://img.shields.io/badge/Manifest-V3-555)](./manifest.json)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=nodedotjs&logoColor=white)](./BUILD.md)
+[![Privacy](https://img.shields.io/badge/Telemetry-None-success)](./PRIVACY.md)
 
-v0.8.5 修正 ZIP Beta 對最新版 ChatGPT 產生檔案按鈕的封存流程：無 `href`、只有 React metadata 或 sandbox 路徑的 XPI／source ZIP，可在沒有 file ID 時交由背景下載器解析；多個候選 sandbox 路徑會依序回退，不再只嘗試第一個。附件掃描也會合併同檔案的 file／asset ID 與 sandbox 路徑，並支援多層隱藏 tool／system 節點。
+**本機佇列 · 回覆完成提醒 · 自訂提示語 · Markdown 匯出 · ZIP 封存 Beta · 對話交接**
 
-v0.8.4 在「下載完整對話封存 ZIP」選項旁加入小型 `Beta` 標籤，提醒這項功能仍可能受到 ChatGPT 附件權限、過期連結與頁面結構更新影響；標籤不會改變下載流程或權限。
+</div>
 
-## v0.8.6 佇列完成判定與圖片上傳定位修正
+> [!NOTE]
+> 這是針對 ChatGPT 網頁版製作的第三方 Firefox 擴充功能，並非 OpenAI 官方產品，也不需要 OpenAI API Key。
 
-- 將最新 assistant turn 的 `aria-busy`、loading/pending/running 狀態、progress、工具 Stop/Cancel 控制與 shimmer/animate/pulse 工作文字納入忙碌判定。
-- 回覆完成優先採用 `copy-turn-action-button` 等 assistant 完成控制作為強證據；若該控制不存在，才使用 12 秒內容穩定回退。
-- 送出新佇列項目前會確認聊天室最後一個可見角色不是 user；若最後是 assistant，也必須已出現完成控制或保持 12 秒穩定。
-- 追蹤 assistant 文字 signature；程式執行期間只要狀態文字持續變化，就會重新計算等待時間。
-- 佇列按鈕優先固定在 `button[data-testid="composer-plus-btn"]` 後方。
-- `Remove image`、Delete、Close、Preview、Crop、Replace 等附件預覽控制不再可能被選為佇列按鈕 anchor。
-- 新增純 Node 安全回歸測試，以及 jsdom 情境測試定義，涵蓋 Send 提早恢復與圖片上傳後重新排版。
-
-## v0.8.5 ZIP Beta 附件解析修正
-
-- 修正只有 `message ID + sandbox path`、沒有 file ID 時，背景下載器直接拒絕的問題。
-- 將同一 React 下載按鈕的多個推測檔名視為下載 fallback，而不是多份實體附件。
-- 支援 React metadata 中的 `/mnt/data/...`、URL 編碼 sandbox path、JSON 字串、file ID 與 asset ID。
-- 修正附件檔名正規表示式的跳脫錯誤，避免「Firefox XPI」「完整原始碼 ZIP」等按鈕文字被誤認為檔名。
-- 同檔案若同時出現 file／asset ID 與 sandbox path，會合併並保留兩種下載策略。
-- 隱藏 tool／system 附件掃描可沿多層隱藏子節點繼續，但會在可見 user／assistant 分支前停止。
-- 新增無 `href` React XPI／source ZIP、sandbox-only 背景下載、多候選回退、具名 ID/path 合併與多層 hidden node 測試。
-
-v0.8.3 補強 ChatGPT 新式下載按鈕：除了 file ID，也會辨識結構化訊息中的 `sandbox:/mnt/data/...` 產生檔案、相鄰隱藏工具節點，以及 Firefox 可讀取的 React 按鈕 metadata。像「下載 Firefox／AMO 用 XPI」與「下載完整原始碼 ZIP」這類沒有 `href` 的按鈕，現在也會進入附件核對清單並嘗試下載。
-
-擴充功能不使用 OpenAI API、不需要 API Key，也不把內容傳送給開發者或第三方分析服務。佇列與設定只保存在 Firefox 本機；完整封存只會在使用者主動點擊後，讀取目前聊天室的附件識別資料、下載使用者確認的檔案，並於本機建立 ZIP。
-
-
-## v0.8.3 產生檔案按鈕辨識修正
-
-- 將只有 `sandbox:/mnt/data/...`、沒有 file ID 的 ChatGPT 產生檔案視為可解析附件。
-- 以 assistant message ID 呼叫 interpreter 下載端點，不再要求每份產生檔案都必須有 `file_...`。
-- 補掃目前分支旁的隱藏 tool/system 檔案節點，但不納入一般替代回答分支。
-- 在 Firefox 中檢查下載按鈕的 React props／fiber metadata，擷取 file ID、sandbox path、檔名與下載網址。
-- 對只有「下載 XPI」「下載完整原始碼 ZIP」等按鈕文字的輸出，依回覆標題與版本建立有限的 sandbox 路徑候選並逐一解析。
-- 修正 sandbox 檔名與 metadata 中重複上傳檔案錯誤配對的問題。
-- 附件核對視窗與匯出報告改用「附件來源」統計，並顯示 path-only 產生檔案路徑。
-
-## v0.8.2 穩定性與測試維護
-
-- 多分頁佇列租約改存於 `storage.session`，背景腳本重啟後仍能阻止其他分頁接手同一聊天室。
-- 租約取得、續期、轉移、釋放、過期清理與分頁關閉清理均採序列化寫入。
-- 簡體／繁體中文 Firefox 的附件 metadata 請求使用 `Oai-Language: zh-TW`；其他所有 Firefox 語言使用 `en-US`。
-- 測試依賴改為直接固定 `jsdom` 與 Mozilla `addons-linter`，並提供 `npm run verify`。
-
-## v0.8.2 Firefox 介面語言切換
-
-- 使用 `browser.i18n.getUILanguage()` 判斷 Firefox 本身的介面語言，而不是依 ChatGPT 網站語言或作業系統語言猜測。
-- 英文 Firefox（包含 `en`、`en-US`、`en-GB` 等）完整顯示英文。
-- Firefox 為簡體或繁體中文時使用中文介面；英文、日文、德文及其他語言預設使用英文。
-- Manifest 名稱、說明與工具列標題使用標準 `_locales/en`、`_locales/zh_TW` WebExtension 語系檔。
-- Popup、系統通知、提示音測試狀態、佇列進度、右下角管理抽屜、錯誤與重試訊息皆已雙語化。
-- 「匯出與轉移」、Markdown 匯出、ZIP 確認與進度視窗、附件版本判斷及下載錯誤皆會依 Firefox 語言顯示。
-- 英文模式的 ZIP 使用 `User Uploads/`、`Provided by ChatGPT/` 與 `export-report.txt`；繁體中文模式維持 `使用者上傳/`、`ChatGPT提供/` 與 `匯出報告.txt`。
-- 中文 Firefox 使用中文交接摘要指令；其他 Firefox 語言使用英文版 Conversation Handoff Summary 指令。
-- 聊天室原始內容、附件檔名與使用者儲存的自訂提示語不會被翻譯或改寫。
-
-
-## v0.7.1 穩定性修正
-
-- 序列化自訂提示語的本機儲存寫入，避免快速連續新增、編輯、排序或刪除時，較早完成的寫入覆蓋較新的資料。
-- 同一分頁切換聊天室期間，儲存提示語的「發送」與交接摘要會等待新聊天室 scope 就緒後再加入佇列。
-- 直接加入佇列時若偵測到 URL 與目前 scope 不一致，會阻止寫入舊聊天室。
-- `saved-prompt` 與 `promptId` metadata 會隨佇列一起保存，重新整理後不會遺失。
-- 多分頁背景執行鎖暫時失聯時採取停止送出並重試，而不是在每個分頁各自放行。
-- Firefox 同時提供 `browser` 與 `chrome` 相容物件時，只註冊一次 storage 變更監聽。
-
-## v0.7.0 自訂提示語庫
-
-- 在「匯出與轉移」選單直接新增與查看常用提示語。
-- 可儲存最多 30 則提示語，每則包含名稱與完整內容。
-- 新增時若 ChatGPT 輸入框已有草稿，會自動帶入提示語內容。
-- 滑鼠移到已儲存提示語，或使用鍵盤將焦點移入該項目時，才顯示「複製」與「發送」。
-- 「發送」會透過現有佇列加入目前聊天室；如果 ChatGPT 正在回答，會等待完成後再送出。
-- 可在管理視窗編輯、刪除、上移與下移。
-- 提示語在所有 ChatGPT 聊天室共用，但發送動作仍受目前聊天室 scope 與多分頁租約保護。
-- 複製動作發生在使用者明確點擊後，不新增剪貼簿權限。
-
-
-## v0.6.4 聊天室綁定與多分頁隔離
-
-- 佇列不再使用所有 ChatGPT 分頁共用的一份全域狀態。
-- 已有聊天室使用 conversation ID 建立獨立 storage key；尚未建立 ID 的新聊天則以目前 Firefox 分頁建立暫時佇列。
-- 新聊天第一次送出後，ChatGPT 路由產生 conversation ID 時，佇列會自動搬移到正式聊天室，不會被誤判為切換聊天室。
-- 在同一分頁切換到其他聊天室時，原佇列會停止並保留在原聊天室；目前聊天室只顯示自己的佇列。
-- 同一聊天室同時開在兩個分頁時，背景腳本只允許其中一個分頁持有發送租約，避免重複送出。
-- 租約會定期續期，分頁關閉或執行結束時釋放。
-- 升級時會將舊版全域佇列一次性遷移到當前聊天室。
-
-## v0.6.3 附件下載與去重修正
-
-- 修正 v0.6.2 只在擴充功能背景環境呼叫單一 metadata 路徑，導致部分使用者上傳 ZIP、XPI、Markdown 與封存檔案回傳 HTTP 403。
-- 先嘗試目前常見的 `/backend-api/files/download/{fileId}`，再依附件來源與資料型態嘗試：
-  - ChatGPT interpreter 產生檔案下載端點
-  - 使用者上傳完成端點
-  - 聊天室 attachment 下載端點
-  - 一般 file download 端點
-  - 舊版帶 conversation ID 的相容 fallback
-- 當擴充功能隔離環境收到 401／403 時，Firefox 版會在 ChatGPT 頁面原生登入環境重試同源 metadata 請求，再把簽名下載網址交給背景下載。
-- 已在頁面端解析出的簽名 CDN URL 會被優先使用，不再由背景腳本無條件重複解析同一 file ID。
-- 每一份附件在真正下載前會於 ChatGPT 頁面登入環境重新整理一次下載網址；若簽名網址在確認視窗停留期間失效，背景下載會捨棄舊網址並以 file ID 再解析一次。
-- 同源 metadata 請求會帶上臨時登入權杖、帳號識別與瀏覽器裝置／語言標頭；這些值只存在記憶體，不寫入封存檔。
-- 同一 `file_...`／`asset_...` 識別碼跨使用者與 ChatGPT 訊息只保留一份，避免同檔案同時出現在 `使用者上傳/` 與 `ChatGPT提供/`。
-- 保留檔案第一次出現的訊息角色作為來源資料夾，後續只合併更完整的檔名、大小、sandbox 路徑與下載網址。
-- 補強 MIME metadata 讀取，讓 XPI、ZIP、圖片、Markdown、音訊等檔案能正確配對 sandbox 檔名；下載回應若只留下 `.bin`，會依 Content-Type 還原合適副檔名。
-- 下載失敗報告會列出各 fallback 端點的狀態，方便後續確認 ChatGPT 介面變更。
-
-
-## v0.6.2 附件完整性修正
-
-- 修正 ChatGPT 新版介面只顯示附件按鈕、但 DOM 沒有直接下載網址時，ZIP 清單為空的問題。
-- ZIP 掃描會合併兩種來源：頁面可見附件卡片，以及目前聊天室結構化資料中的 `asset_pointer`／檔案 ID。
-- 支援使用者上傳檔案與 ChatGPT 產生的 XPI、ZIP、文件、圖片及其他檔案類型。
-- 透過目前聊天室 ID 解析檔案下載資訊；登入權杖只暫存在記憶體，不寫入 storage、ZIP 或紀錄。
-- 相同檔名若同時存在「只有畫面文字」與「可下載檔案 ID」，會優先保留可下載來源。
-- 無法解析的附件線索不再靜默消失，會在確認視窗與 `匯出報告.txt` 顯示。
-- 修正 `file_asset_pointer` 被誤判為檔案 ID，以及聊天室 UUID 被誤列成附件名稱的問題。
-- 修正 Help Center 網址中的 `file-uploads-faq` 等文字被誤判為檔案 ID。
-- 支援目前聊天室使用的 `file_...`／`asset_...` 識別碼，也保留舊式 `file-...`／`asset-...` 相容性。
-- 一般網站、引用來源、GitHub 與論文連結仍不會加入封存。
-
-
-## v0.6.0 完整對話封存 ZIP
-
-- 「匯出與轉移」選單保留原本 Markdown 下載，另新增「下載完整對話封存 ZIP」。
-- 自 v0.8.4 起，這個選項旁會顯示小型 `Beta` 標籤，提醒附件封存仍可能受 ChatGPT 權限或失效連結影響。
-- ZIP 名稱直接使用目前聊天室名稱，例如 `ChatGPT Queue Sender 開發紀錄.zip`。
-- ZIP 內容：
-  - `聊天室名稱.md`
-  - `使用者上傳/`
-  - `ChatGPT提供/`
-  - `匯出報告.txt`
-- 只下載 ChatGPT 頁面上的實際附件、使用者上傳檔案與 ChatGPT 產生的可下載成果；一般網站、GitHub、YouTube、新聞與引用來源不會加入 ZIP。
-- 依檔名辨識 `V1`、`V2`、`2.0`、`2.1`、`最終版`、`最新版`、`修改版`、`(1)`、`(2)` 等版本資訊，預設只選最新版本。
-- `source`、`AMO`、不同副檔名與使用者／ChatGPT 來源會分開保留，不會互相覆蓋。
-- 匯出前顯示檔案確認清單，可手動恢復較舊版本、取消選取或重新套用「只選最新版本」。
-- 單一檔案超過 100 MB 時詢問；封存內容超過 500 MB 時再次警告。
-- 個別附件失效不會中止整次匯出，失敗原因會寫入 `匯出報告.txt`。
-- HTTPS 附件由背景下載通道處理，僅允許 ChatGPT／OpenAI／oaiusercontent 網域；非 OpenAI 網站會在請求前被拒絕。
-- ZIP 由擴充功能在本機以 ZIP32 無壓縮封存格式建立，不需要 Firefox `downloads` 權限，也不載入遠端壓縮程式碼。HTTPS 附件會由背景腳本透過 ChatGPT／OpenAI 檔案主機權限下載，再以分段訊息交給目前分頁封裝。
-
-## v0.5.1 匯出速度改善
-
-- 一般對話改用「頂部確認 → 底部快照」快速路徑。
-- 不再因單一 ChatGPT 長回答的高度而逐畫面反覆掃描。
-- 頂部載入改用訊息數量與頁面高度的穩定判斷，避免固定長時間等待。
-- 只有偵測到虛擬捲動或訊息序號缺口時才啟用備援掃描。
-- 備援掃描每次跨越至少 1.45 個可視畫面，並限制最多檢查點與總時間。
-- 下載完成提示會顯示實際匯出耗時。
-
-## v0.5.0 新功能
-
-- 聊天室左上角新增一顆小型「匯出與轉移」按鈕。
-- 新增「下載完整對話 Markdown」：
-  - 快速跳至頂部載入並確認目前對話分支較早的內容。
-  - 一般情況直接跳到底部完成收集；必要時才啟用較密集的備援掃描。
-  - 保留使用者／ChatGPT 角色、訊息順序、標題、清單、程式碼、表格、連結與圖片替代文字。
-  - 附件以檔名、類型、來源角色與可見連結表示。
-  - 無法確認完整性時會先警告，不會直接宣稱完整匯出。
-- 新增「產生對話交接摘要」：
-  - 先顯示標準結構指令供使用者預覽與修改。
-  - 確認後加入訊息佇列，若前面仍有任務會排在最後。
-  - 回覆完成後，在該則回答旁加入「複製交接摘要」。
-- 新增交接佇列項目 metadata，重新整理後仍可辨識交接任務。
-- 將匯出功能拆分為獨立的 Markdown 轉換、對話匯出與交接指令模組。
-- v0.5.0 的匯出與轉移介面先以 Firefox 桌面版為主要支援範圍。
-
-## v0.8.2 匯出流程改善
-
-- 掃描對話、解析附件、更新下載授權、逐檔下載與 ZIP 封裝皆顯示進度條。
-- 顯示百分比、已用時間，以及可估算時的剩餘時間。
-- 以聊天室結構化分支訊息數交叉核對完整性，降低已到頂端卻誤跳警告的情況。
-- 附件清單準備完成時顯示頁面提示，並可透過既有的 Firefox 通知設定顯示系統通知。
-- 簡體與繁體中文 Firefox 使用中文，其餘 Firefox 語言預設英文。
-
-## 主要功能
-
-- 支援 `https://chatgpt.com/*` 與 `https://chat.openai.com/*`
-- 最多 10 則待送訊息
-- 使用單獨一行 `---` 分隔多則訊息
-- 加入佇列後自動逐則送出
-- 每個聊天室使用獨立佇列，不會在其他分頁或其他聊天室誤送
-- 同一聊天室開啟多個分頁時，只允許一個分頁執行佇列，避免重複發送
-- 等待上一則回覆完成後才送下一則
-- 右下角卡片式管理抽屜
-- 編輯、刪除、上移、下移與複製訊息
-- 復原剛加入的訊息
-- 停止後續發送，以及停止後的情境式繼續／重試按鈕
-- 重新整理後保留佇列、暫停狀態與已提交狀態
-- 手動訊息與佇列訊息皆支援完成提醒
-- 可選提示音與 Firefox／作業系統通知
-- 可重複使用的本機自訂提示語庫，支援滑入後複製或發送
-- 目前聊天室 Markdown 匯出
-- 目前聊天室完整附件 ZIP 封存與最新版本篩選
-- 對話交接摘要指令預覽、排入佇列與完成後複製
-- 不使用 OpenAI API、開發者控制伺服器、分析或遙測
-
-## 安裝測試
-
-1. 在 Firefox 開啟 `about:debugging#/runtime/this-firefox`。
-2. 點選「載入暫時附加元件」。
-3. 選擇本資料夾中的 `manifest.json`。
-4. 開啟或重新整理 ChatGPT 網頁。
-
-## 使用訊息佇列
-
-1. 在 ChatGPT 輸入框輸入訊息。
-2. 點輸入工具列中、位於 `+` 旁邊的「加入佇列」圖示。
-3. 輸入框會清空，擴充功能會自動開始處理。
-4. 若 ChatGPT 正在回覆，狀態列會顯示「等待可送出」。
-5. 訊息送出後會顯示「等待回覆完成」，回覆結束才處理下一筆。
-6. 點「管理」可開啟右下角抽屜。
-7. 點「停止」只停止後續佇列，不會點擊 ChatGPT 原生停止按鈕。
-
-## 使用自訂提示語
-
-1. 點聊天室左上角的「匯出與轉移」。
-2. 在「自訂提示語」區按「新增」。
-3. 輸入名稱與完整提示語；名稱留白時會使用第一行自動命名。
-4. 儲存後，滑鼠移到提示語項目即可選擇「複製」或「發送」。
-5. 「發送」會加入目前聊天室自己的佇列；若已有工作則排在後面。
-6. 點「管理提示語」可編輯、刪除或調整順序。
-
-自訂提示語使用全域本機資料庫，因此在不同 ChatGPT 聊天室都能看到；只有實際發送的那一刻會綁定目前聊天室。
-
-## 匯出目前聊天室
-
-1. 在聊天室主要內容區左上角點「匯出與轉移」。
-2. 選擇：
-   - 「下載完整對話 Markdown」：只下載文字紀錄。
-   - 「下載完整對話封存 ZIP」：下載 Markdown、最新版本附件與匯出報告。
-3. 擴充功能會快速跳到頁面頂部與底部收集目前分支；只有必要時才執行備援掃描。
-4. ZIP 模式會先顯示檔案清單與自動排除的較舊版本，可由使用者手動調整。
-5. 完成後頁面會回到原本位置並下載 `.md` 或以聊天室名稱命名的 `.zip`。
-
-匯出範圍只包含目前顯示的對話分支，不包含其他分支、左側歷史列表、隱藏系統指令、內部推理或其他聊天室。
-
-Markdown 會保留頁面可辨識的附件名稱與可見連結。ZIP 模式會合併頁面附件卡片與目前聊天室結構化資料中的檔案 ID，以找出實際附件與 ChatGPT 產生的成果；一般外部參考連結不會下載。附件連結可能需要登入或可能失效，失敗項目會記錄在 ZIP 內的 `匯出報告.txt`。
-
-## 產生對話交接摘要
-
-1. 點「匯出與轉移」→「產生對話交接摘要」。
-2. 檢查或修改預設指令。
-3. 點「送出整理指令」。
-4. 指令會加入佇列；若 ChatGPT 正在回覆或已有待送內容，會排在最後。
-5. 回覆完成後，點回答旁的「複製交接摘要」，再貼到新的聊天室。
-
-交接摘要由目前聊天室中的 ChatGPT 根據其可用上下文產生。若對話已超出模型可用上下文或較早內容已不可存取，摘要仍可能缺漏，因此重要檔案與決策應再人工核對。
-
-## 開啟完成提醒
-
-1. 點 Firefox 工具列中的 ChatGPT Queue Sender icon。
-2. 開啟「啟用完成提醒」。
-3. 選擇「Firefox 系統通知」、「提示音」或兩者同時使用。
-4. 需要時關閉「離開分頁時才提醒」，即可在正在觀看 ChatGPT 時也收到提醒。
-5. 點「測試提醒」確認系統通知與聲音是否正常。
-
-Firefox 系統通知首次開啟時會要求 `notifications` 選用權限。若作業系統已關閉 Firefox 通知，仍需到系統通知設定中允許 Firefox 顯示通知。
-
-## 多則一次加入
-
-```text
-第一則訊息
 ---
-第二則訊息
+
+## 功能一覽
+
+ChatGPT Queue Sender 會在 ChatGPT 輸入框的 **「+」旁邊**加入一個小型佇列按鈕。你可以先準備多則提示詞，擴充功能會透過原本的 ChatGPT composer 逐則送出，並在確認上一則回答已真正完成後才繼續。
+
+| 功能 | 說明 |
+| --- | --- |
+| 📨 訊息佇列 | 最多 10 則待送提示詞，自動逐則處理 |
+| 🔒 聊天室隔離 | 每個 conversation ID 使用獨立佇列，不會跨聊天室誤送 |
+| 🗂️ 多分頁保護 | 同一聊天室多分頁時，只允許一個分頁持有發送租約 |
+| 🛑 安全完成判定 | 避免 ChatGPT 還在 Thinking / Working / Running 時提早送出下一則 |
+| ✏️ 佇列管理 | 編輯、刪除、排序、複製、停止、繼續與重試 |
+| 🔔 完成提醒 | 可選提示音與 Firefox / 作業系統通知 |
+| 💾 自訂提示語 | 常用提示語儲存在 Firefox 本機，可快速複製或送入目前聊天室 |
+| 📝 Markdown 匯出 | 匯出目前顯示的對話分支 |
+| 📦 完整 ZIP 封存 | Markdown + 使用者上傳 + ChatGPT 提供檔案 + 匯出報告 |
+| 🔁 對話交接 | 產生可帶到新聊天室使用的結構化交接摘要 |
+| 🌐 中英文介面 | 中文 Firefox 顯示中文，其他 Firefox 語言預設英文 |
+
 ---
-第三則訊息
+
+## 為什麼需要它？
+
+一般情況下，如果你一次有很多工作要交給 ChatGPT，需要等待上一則完成，再手動貼上下一則。
+
+這個擴充功能把流程變成：
+
+```mermaid
+flowchart LR
+    A[輸入提示詞] --> B[加入佇列]
+    B --> C{ChatGPT 是否仍在工作?}
+    C -- 是 --> D[繼續等待]
+    D --> C
+    C -- 否 --> E[確認回答已完成]
+    E --> F[送出下一則]
+    F --> C
 ```
 
-按一次加入佇列後，會依序處理，最多 10 則。
+特別是在程式開發、工具執行或長回答中，ChatGPT 有時會先恢復 Send 按鈕，但背景工作仍在繼續。v0.8.6 加入更保守的完成判定，降低下一則訊息提早打斷工作的風險。
 
-## 隱私權與權限
+---
 
-- 不收集、傳輸、販售或分享個人資料。
-- 佇列內容、必要狀態、自訂提示語與提醒設定只儲存在 Firefox 本機 WebExtension storage。
-- Markdown 與 ZIP 匯出只在使用者點擊後執行；ZIP 模式會從目前聊天室資料取得附件 ID，解析並下載使用者選定的檔案，再於本機建立封存。暫時登入權杖只保留在記憶體中。
-- 不使用遠端伺服器、分析、遙測、追蹤、廣告 SDK 或外部 API。
-- `storage` 是必要 API 權限，用來保存佇列與提醒設定。
-- `notifications` 是選用 API 權限，只有使用者開啟系統通知時才要求。
-- ChatGPT 頁面與 OpenAI 控制的檔案主機權限，用於注入功能介面，以及在使用者確認 ZIP 清單後由背景腳本讀取所選附件。
-- 系統通知內容只由擴充功能在本機交給 Firefox／作業系統顯示。
-- `manifest.json` 聲明 `data_collection_permissions.required = ["none"]`。
-- 詳細內容請見 `PRIVACY.md`。
+## v0.8.6 重點改進
 
-## 注意事項
+### 更安全的「回答完成」判定
 
-本擴充功能透過 ChatGPT 網頁既有輸入框與按鈕操作，不會繞過登入、訂閱、模型權限、速率限制或服務限制。
+不再只依賴原生 Stop / Send 按鈕。
 
-ChatGPT 網頁 DOM 可能更新。若輸入框、送出按鈕、停止按鈕、訊息節點、附件卡片或捲動容器結構改變，需同步調整 selector 與匯出邏輯。
+擴充功能會另外檢查最新 assistant turn 的：
 
-提示音受 Firefox 自動播放政策與分頁音訊設定影響。若提示音無法播放，可保留 Firefox 系統通知，或先在 ChatGPT 分頁內進行一次點擊／鍵盤操作後再測試。
+- `aria-busy`、loading、pending、running 狀態
+- progress / 工具 Stop / Cancel 控制
+- Thinking、Working、Running、Reading、Writing、Editing、Testing 等動態工作狀態
+- assistant 完成操作，例如 `copy-turn-action-button`
+- 最新可見角色是否仍是尚未得到回答的 user message
+- 回覆內容是否已穩定一段保守等待時間
+
+如果 ChatGPT 的頁面結構改變、找不到明確完成控制，擴充功能會採用較保守的內容穩定回退，而不是立即送出下一則。
+
+### 修正上傳圖片後佇列按鈕跑位
+
+佇列按鈕現在會優先固定在：
+
+```css
+button[data-testid="composer-plus-btn"]
+```
+
+並排除圖片 / 附件預覽區中的 Remove、Delete、Close、Preview、Crop、Replace 等控制按鈕，因此上傳圖片或檔案後不應再把佇列按鈕錯誤插入預覽區。
+
+### ZIP Beta 附件解析
+
+目前可辨識多種 ChatGPT 附件來源，包括：
+
+- `file ID`
+- `asset ID`
+- `sandbox:/mnt/data/...`
+- `/mnt/data/...`
+- URL encoded sandbox path
+- 隱藏 tool / system 節點
+- 沒有 `href`、只有 React metadata 的下載按鈕
+
+同一附件若同時具有 ID 與 sandbox path，會合併並保留多種下載策略，降低漏抓與重複封存。
+
+---
+
+## 安裝
+
+### 方法 A：從原始碼暫時載入
+
+適合開發、測試或自行檢查原始碼。
+
+1. 下載或 clone 此 repository。
+2. 在 Firefox 開啟：
+
+   ```text
+   about:debugging#/runtime/this-firefox
+   ```
+
+3. 點擊 **Load Temporary Add-on / 載入暫時附加元件**。
+4. 選擇 repository 根目錄中的 `manifest.json`。
+5. 開啟或重新整理：
+
+   - `https://chatgpt.com/`
+   - `https://chat.openai.com/`
+
+6. 確認 ChatGPT 輸入框的 `+` 旁邊出現佇列按鈕。
+
+> [!IMPORTANT]
+> 暫時載入的擴充功能會在 Firefox 關閉後失效。正式長期安裝需要 Firefox 可接受的已簽署 XPI。
+
+### Firefox 版本
+
+- Firefox Desktop：**140.0+**
+- Firefox Android manifest 最低版本：**142.0+**
+- 匯出與轉移等介面目前以 Firefox 桌面版為主要支援環境
+
+---
+
+## 基本使用方式
+
+### 加入訊息佇列
+
+1. 在 ChatGPT 輸入框輸入提示詞。
+2. 點擊 `+` 旁邊的 **加入佇列** 按鈕。
+3. 加入佇列即代表確認，不需要再按「開始」。
+4. 如果 ChatGPT 正在工作，擴充功能會等待。
+5. 上一則回答真正完成後，才會處理下一則。
+
+你也可以用單獨一行：
+
+```text
+---
+```
+
+把輸入內容分成多則訊息後一次加入佇列。
+
+### 管理佇列
+
+右下角管理抽屜可用來：
+
+- 查看目前待送內容
+- 編輯
+- 刪除
+- 上移 / 下移
+- 複製
+- 停止後續發送
+- 在適合的情況下繼續或重試
+- 復原剛加入的訊息
+
+重新整理頁面後，佇列、暫停狀態與已提交狀態仍會保留。
+
+---
+
+## 完成提醒
+
+工具列 popup 可設定：
+
+- 回覆完成提醒總開關
+- 柔和提示音
+- Firefox / 作業系統通知
+- 只在離開目前 ChatGPT 分頁時提醒
+- 測試提醒
+
+`notifications` 是 **選用權限**，只有使用者主動開啟系統通知時才會要求。
+
+---
+
+## 自訂提示語
+
+「匯出與轉移」選單也提供本機提示語庫：
+
+- 最多儲存 30 則
+- 自訂名稱與完整內容
+- 編輯、刪除、排序
+- 滑鼠移入後快速複製或發送
+- 全聊天室共用提示語庫
+- 實際發送時仍只會加入目前聊天室的佇列
+
+資料保存在 Firefox WebExtension 本機 storage。
+
+---
+
+## 匯出與轉移
+
+### Markdown 匯出
+
+可以把目前 ChatGPT 顯示的對話分支匯出成 Markdown，保留常見內容結構，例如：
+
+- User / ChatGPT 角色
+- 訊息順序
+- 標題
+- 粗體與清單
+- 引言
+- 程式碼區塊與 inline code
+- 表格
+- 連結
+- 圖片替代文字
+- 可見附件資訊
+
+### 完整對話 ZIP `Beta`
+
+ZIP 封存會在本機建立，預期結構如下：
+
+```text
+聊天室名稱.zip
+├── 聊天室名稱.md
+├── 使用者上傳/
+├── ChatGPT提供/
+└── 匯出報告.txt
+```
+
+英文 Firefox 則使用：
+
+```text
+Conversation title.zip
+├── Conversation title.md
+├── User Uploads/
+├── Provided by ChatGPT/
+└── export-report.txt
+```
+
+匯出前可檢查附件清單，並依 `V1`、`V2`、`2.0`、`2.1`、`修改版`、`最終版`、`(1)`、`(2)` 等檔名資訊預設選擇較新的版本。
+
+> [!WARNING]
+> ZIP 封存仍標示為 **Beta**。舊附件可能因 HTTP 403、權限撤銷、簽名下載網址過期，或 ChatGPT 網頁結構改變而無法下載。單一附件失敗不會中止整份 ZIP，原因會寫入匯出報告。
+
+### 對話交接摘要
+
+擴充功能可以：
+
+1. 顯示標準化交接指令供使用者預覽。
+2. 允許修改內容。
+3. 將交接指令排入目前聊天室佇列。
+4. 回覆完成後提供快速複製交接摘要。
+
+適合把長對話的專案狀態帶到新聊天室繼續。
+
+---
+
+## 聊天室與多分頁安全機制
+
+佇列不是所有 ChatGPT 分頁共用的一份全域資料。
+
+- 已建立聊天室：以 **conversation ID** 建立獨立 scope
+- 尚未建立 conversation ID 的新聊天：使用目前 Firefox **tab ID** 建立 draft scope
+- 同一聊天室同時開啟多個分頁：透過 `storage.session` 持久租約限制只有一個分頁可發送
+- 切換聊天室：舊聊天室佇列保留，不會被帶到新聊天室送出
+- 背景腳本短暫重新啟動：租約仍可恢復，降低多分頁重複發送風險
+
+---
+
+## 隱私與權限
+
+ChatGPT Queue Sender：
+
+- 不需要 OpenAI API Key
+- 不使用開發者控制的遠端伺服器
+- 不使用 analytics / telemetry / tracking
+- 不含廣告 SDK
+- 不載入遠端程式碼
+- 不會把佇列或匯出的聊天內容傳送給開發者
+
+必要權限：
+
+```json
+"permissions": ["storage"]
+```
+
+選用權限：
+
+```json
+"optional_permissions": ["notifications"]
+```
+
+附件封存需要存取 ChatGPT / OpenAI / oaiusercontent 控制的檔案主機。背景腳本只允許指定 OpenAI 相關 HTTPS 網域，其他網站會在程式層被拒絕。
+
+完整說明請閱讀 **[PRIVACY.md](./PRIVACY.md)**。
+
+---
+
+## 開發環境
+
+需求：
+
+- Node.js **20+**
+- npm **10+**
+
+安裝依賴：
+
+```bash
+npm ci
+```
+
+執行完整驗證：
+
+```bash
+npm run verify
+```
+
+常用測試：
+
+```bash
+npm run check
+npm run test:pure
+npm run test:safety
+npm run test:dom
+npm run lint:amo
+```
+
+`npm run verify` 會組合語法 / 靜態檢查、模擬測試、jsdom UI 測試以及 Mozilla `addons-linter`。
+
+更多資訊：
+
+- **[BUILD.md](./BUILD.md)** — 建置與 XPI / source ZIP 封裝方式
+- **[TESTING.md](./TESTING.md)** — 完整人工與自動測試清單
+- **[VALIDATION_REPORT.md](./VALIDATION_REPORT.md)** — 目前版本的驗證結果
+
+---
+
+## 專案結構
+
+```text
+.
+├── manifest.json
+├── background.js
+├── content.js
+├── content.css
+├── i18n.js
+├── _locales/
+│   ├── en/
+│   ├── zh_CN/
+│   └── zh_TW/
+├── icons/
+│   ├── icon-16.png
+│   ├── icon-32.png
+│   ├── icon-48.png
+│   ├── icon-64.png
+│   ├── icon-96.png
+│   ├── icon-128.png
+│   ├── icon-256.png
+│   └── icon-512.png
+├── popup/
+│   ├── popup.html
+│   ├── popup.css
+│   └── popup.js
+├── export/
+│   ├── archive-export.js
+│   ├── conversation-api.js
+│   ├── conversation-export.js
+│   ├── custom-prompts.js
+│   ├── handoff-prompt.js
+│   ├── markdown-converter.js
+│   ├── zip-writer.js
+│   └── export-ui.css
+├── tests/
+├── scripts/
+├── BUILD.md
+├── TESTING.md
+├── PRIVACY.md
+├── CHANGELOG.md
+├── FIREFOX_STORE_LISTING.md
+├── AMO_UPLOAD_NOTES.md
+└── VALIDATION_REPORT.md
+```
+
+---
+
+## 文件
+
+| 文件 | 用途 |
+| --- | --- |
+| [BUILD.md](./BUILD.md) | 本機測試、建立 AMO XPI、建立 source ZIP |
+| [TESTING.md](./TESTING.md) | 詳細測試案例與回歸檢查 |
+| [PRIVACY.md](./PRIVACY.md) | 中英文隱私權政策 |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本變更紀錄 |
+| [FIREFOX_STORE_LISTING.md](./FIREFOX_STORE_LISTING.md) | Firefox Add-ons 商店文案與權限說明 |
+| [AMO_UPLOAD_NOTES.md](./AMO_UPLOAD_NOTES.md) | AMO 上傳注意事項 |
+| [VALIDATION_REPORT.md](./VALIDATION_REPORT.md) | v0.8.6 驗證報告 |
+
+---
+
+## 已知限制
+
+- ChatGPT 是持續更新的網頁應用，DOM / React 結構改變後可能需要更新 selector 或狀態判定。
+- ZIP Beta 無法保證已失效、權限被撤銷或簽名網址已過期的舊附件仍可下載。
+- 擴充功能不會繞過 ChatGPT 的登入、訂閱、模型存取、訊息額度或速率限制。
+- 完整匯出 / 轉移介面目前主要以 Firefox 桌面版為測試目標。
+- 暫時載入未簽署版本只適合開發與測試。
+
+如果遇到問題，回報時建議附上：
+
+1. Firefox 版本
+2. 擴充功能版本
+3. 發生問題的功能
+4. 是否可重現
+5. Console 錯誤（若有）
+6. ZIP 問題請附 `匯出報告.txt` / `export-report.txt`，但請先確認內容中沒有不想公開的私人資訊
+
+---
+
+## 版本資訊
+
+目前版本：**v0.8.6**
+
+近期重點：
+
+- **v0.8.6** — 防止 ChatGPT 工具 / 程式工作尚未完成時誤送下一則；修正圖片上傳後佇列按鈕錯位
+- **v0.8.5** — 補強 React 無 `href` 下載按鈕、sandbox-only 附件、hidden tool/system 附件解析
+- **v0.8.4** — 完整對話 ZIP 加入 `Beta` 標籤
+- **v0.8.2** — 多分頁租約、雙語介面與驗證流程補強
+- **v0.7.0** — 自訂提示語庫
+- **v0.6.0** — 完整對話 ZIP 封存
+- **v0.5.0** — Markdown 匯出與對話交接
+- **v0.4.0** — 回覆完成提醒
+
+完整內容請看 **[CHANGELOG.md](./CHANGELOG.md)**。
+
+---
+
+## English Summary
+
+**ChatGPT Queue Sender** is a local-first Firefox extension for the ChatGPT web interface. It adds a conversation-scoped prompt queue, reusable saved prompts, completion alerts, Markdown export, a Beta ZIP conversation archive with selected attachments, and handoff tools.
+
+The extension waits for the current ChatGPT response to actually finish before submitting the next queued prompt. v0.8.6 also guards against long coding/tool tasks where the native Send button may return before the assistant has fully completed its work.
+
+Key points:
+
+- Conversation-scoped local queues
+- Multi-tab lease protection
+- Conservative completion detection
+- Saved prompt library
+- Optional local sound/system notifications
+- Markdown export
+- ZIP archive Beta with attachment review and version selection
+- Conversation handoff workflow
+- Chinese UI for Simplified/Traditional Chinese Firefox; English for other Firefox UI languages
+- No OpenAI API key
+- No developer-controlled server
+- No analytics or telemetry
+
+See **[BUILD.md](./BUILD.md)** for development and packaging instructions and **[PRIVACY.md](./PRIVACY.md)** for the full privacy policy.
+
+---
+
+<div align="center">
+  <sub>Built for a safer, more organized ChatGPT workflow on Firefox.</sub>
+</div>
