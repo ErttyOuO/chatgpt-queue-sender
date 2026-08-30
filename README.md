@@ -7,12 +7,15 @@
 先排好提示詞，等待上一則回覆真正完成後，再安全地自動送出下一則。
 
 [![Version](https://img.shields.io/badge/version-0.8.6-2f81f7)](#版本資訊)
+[![Firefox Add-ons](https://img.shields.io/badge/Firefox%20Add--ons-Install-FF7139?logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)
 [![Firefox](https://img.shields.io/badge/Firefox-140%2B-FF7139?logo=firefoxbrowser&logoColor=white)](#安裝)
 [![Manifest](https://img.shields.io/badge/Manifest-V3-555)](./manifest.json)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=nodedotjs&logoColor=white)](./BUILD.md)
 [![Privacy](https://img.shields.io/badge/Telemetry-None-success)](./PRIVACY.md)
 
 **本機佇列 · 回覆完成提醒 · 自訂提示語 · Markdown 匯出 · ZIP 封存 Beta · 對話交接**
+
+### [🦊 從 Firefox Add-ons 安裝](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)
 
 </div>
 
@@ -107,9 +110,27 @@ button[data-testid="composer-plus-btn"]
 
 ## 安裝
 
-### 方法 A：從原始碼暫時載入
+### 方法 A：Firefox Add-ons 官方商店（推薦）
 
-適合開發、測試或自行檢查原始碼。
+ChatGPT Queue Sender 已正式上架 Firefox Add-ons，可直接從 Mozilla 官方商店安裝與接收後續更新。
+
+**[🦊 前往 Firefox Add-ons 安裝 ChatGPT 佇列發送/批次發送](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)**
+
+商店版本：**v0.8.6**
+
+安裝後開啟或重新整理：
+
+- `https://chatgpt.com/`
+- `https://chat.openai.com/`
+
+確認 ChatGPT 輸入框的 `+` 旁邊出現佇列按鈕即可。
+
+> [!NOTE]
+> Firefox Add-ons 頁面亦標示此擴充功能可用於 Firefox for Android。部分完整匯出、轉移與桌面操作流程仍以 Firefox Desktop 為主要測試環境。
+
+### 方法 B：從原始碼暫時載入
+
+適合開發、測試、除錯或自行檢查原始碼。一般使用者建議直接使用上方 Firefox Add-ons 正式版本。
 
 1. 下載或 clone 此 repository。
 2. 在 Firefox 開啟：
@@ -120,21 +141,18 @@ button[data-testid="composer-plus-btn"]
 
 3. 點擊 **Load Temporary Add-on / 載入暫時附加元件**。
 4. 選擇 repository 根目錄中的 `manifest.json`。
-5. 開啟或重新整理：
-
-   - `https://chatgpt.com/`
-   - `https://chat.openai.com/`
-
-6. 確認 ChatGPT 輸入框的 `+` 旁邊出現佇列按鈕。
+5. 開啟或重新整理 ChatGPT。
+6. 確認輸入框的 `+` 旁邊出現佇列按鈕。
 
 > [!IMPORTANT]
-> 暫時載入的擴充功能會在 Firefox 關閉後失效。正式長期安裝需要 Firefox 可接受的已簽署 XPI。
+> 暫時載入只適合開發與測試，Firefox 關閉後會失效。日常使用請安裝 Firefox Add-ons 商店正式版本。
 
 ### Firefox 版本
 
 - Firefox Desktop：**140.0+**
 - Firefox Android manifest 最低版本：**142.0+**
-- 匯出與轉移等介面目前以 Firefox 桌面版為主要支援環境
+- Firefox Add-ons：**已正式上架**
+- 匯出與轉移等介面目前仍以 Firefox 桌面版為主要支援／測試環境
 
 ---
 
@@ -422,7 +440,8 @@ npm run lint:amo
 
 ## 版本資訊
 
-目前版本：**v0.8.6**
+目前版本：**v0.8.6**  
+Firefox Add-ons：**已正式上架** — [前往官方商店安裝](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)
 
 近期重點：
 
@@ -441,7 +460,7 @@ npm run lint:amo
 
 ## English Summary
 
-**ChatGPT Queue Sender** is a local-first Firefox extension for the ChatGPT web interface. It adds a conversation-scoped prompt queue, reusable saved prompts, completion alerts, Markdown export, a Beta ZIP conversation archive with selected attachments, and handoff tools.
+**ChatGPT Queue Sender** is a local-first Firefox extension for the ChatGPT web interface. It is officially available on [Firefox Add-ons](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/) and adds a conversation-scoped prompt queue, reusable saved prompts, completion alerts, Markdown export, a Beta ZIP conversation archive with selected attachments, and handoff tools.
 
 The extension waits for the current ChatGPT response to actually finish before submitting the next queued prompt. v0.8.6 also guards against long coding/tool tasks where the native Send button may return before the assistant has fully completed its work.
 
@@ -457,6 +476,7 @@ Key points:
 - Conversation handoff workflow
 - Chinese UI for Simplified/Traditional Chinese Firefox; English for other Firefox UI languages
 - No OpenAI API key
+- Official Firefox Add-ons distribution
 - No developer-controlled server
 - No analytics or telemetry
 
