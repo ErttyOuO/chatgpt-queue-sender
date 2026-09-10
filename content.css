@@ -4,6 +4,8 @@
 #cqs-manager *,
 #cqs-toast,
 #cqs-toast *,
+#cqs-schedule-panel,
+#cqs-schedule-panel *,
 button#cqs-floating-button {
   box-sizing: border-box;
 }
@@ -28,6 +30,9 @@ button#cqs-floating-button {
   white-space: nowrap;
   box-shadow: none;
   vertical-align: middle;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 button#cqs-floating-button:hover,
@@ -331,6 +336,46 @@ button#cqs-floating-button .cqs-btn-badge {
   font-size: 11px;
 }
 
+#cqs-manager .cqs-item-scheduled {
+  border-color: rgba(16, 163, 127, 0.28);
+  background: color-mix(in srgb, var(--main-surface-secondary, #f7f7f8) 78%, rgba(16, 163, 127, 0.05));
+}
+
+#cqs-manager .cqs-item-schedule-index {
+  background: rgba(16, 163, 127, 0.12);
+  color: color-mix(in srgb, var(--text-primary, #111827) 76%, rgb(16, 163, 127));
+  font-size: 17px;
+}
+
+#cqs-manager .cqs-item-schedule-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+#cqs-manager .cqs-item-schedule-meta strong {
+  font-size: 11px;
+  font-weight: 760;
+  color: var(--text-secondary, #6b7280);
+}
+
+#cqs-manager .cqs-item-schedule-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(16, 163, 127, 0.12);
+  color: color-mix(in srgb, var(--text-primary, #111827) 78%, rgb(16, 163, 127));
+  font-size: 10px;
+  font-weight: 800;
+}
+
+#cqs-manager .cqs-item-scheduled-text[readonly] {
+  cursor: default;
+  resize: vertical;
+  background: color-mix(in srgb, var(--main-surface-primary, #ffffff) 94%, rgba(16, 163, 127, 0.03));
+}
+
 #cqs-manager .cqs-manager-actions {
   flex: 0 0 auto;
   display: flex;
@@ -447,4 +492,319 @@ button#cqs-floating-button .cqs-btn-badge[hidden] {
   flex: 0 0 auto;
   border-radius: 7px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
+#cqs-schedule-panel {
+  position: fixed;
+  z-index: 10020;
+  max-height: min(68vh, 560px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(142, 142, 160, 0.28);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--main-surface-primary, #ffffff) 96%, transparent);
+  color: var(--text-primary, #111827);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.18);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  backdrop-filter: blur(16px);
+}
+
+#cqs-schedule-panel[hidden] {
+  display: none !important;
+}
+
+#cqs-schedule-panel .cqs-schedule-head,
+#cqs-schedule-panel .cqs-schedule-list-head,
+#cqs-schedule-panel .cqs-schedule-actions,
+#cqs-schedule-panel .cqs-schedule-item {
+  display: flex;
+  align-items: center;
+}
+
+#cqs-schedule-panel .cqs-schedule-head {
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+#cqs-schedule-panel .cqs-schedule-head > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+#cqs-schedule-panel .cqs-schedule-head strong {
+  font-size: 14px;
+  font-weight: 760;
+}
+
+#cqs-schedule-panel .cqs-schedule-head span {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(16, 163, 127, 0.12);
+  color: color-mix(in srgb, var(--text-primary, #111827) 82%, rgb(16, 163, 127));
+  font-size: 10px;
+  font-weight: 750;
+}
+
+#cqs-schedule-panel button {
+  appearance: none;
+  border: 1px solid rgba(142, 142, 160, 0.26);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+#cqs-schedule-panel button:hover:not(:disabled),
+#cqs-schedule-panel button:focus-visible {
+  background: color-mix(in srgb, var(--text-primary, #111827) 8%, transparent);
+  outline: none;
+}
+
+#cqs-schedule-panel button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+#cqs-schedule-panel .cqs-schedule-close {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+#cqs-schedule-panel .cqs-schedule-hint {
+  margin-bottom: 10px;
+  color: var(--text-secondary, #6b7280);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+#cqs-schedule-panel .cqs-schedule-field {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+#cqs-schedule-panel .cqs-schedule-field > span {
+  color: var(--text-secondary, #6b7280);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+#cqs-schedule-panel textarea,
+#cqs-schedule-panel input[type="datetime-local"] {
+  width: 100%;
+  border: 1px solid rgba(142, 142, 160, 0.28);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--main-surface-secondary, #f7f7f8) 88%, transparent);
+  color: var(--text-primary, #111827);
+  font: 12px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#cqs-schedule-panel textarea {
+  min-height: 72px;
+  max-height: 150px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+#cqs-schedule-panel input[type="datetime-local"] {
+  min-height: 38px;
+  padding: 7px 9px;
+}
+
+#cqs-schedule-panel textarea:focus,
+#cqs-schedule-panel input[type="datetime-local"]:focus {
+  border-color: rgba(16, 163, 127, 0.65);
+  outline: 2px solid rgba(16, 163, 127, 0.12);
+  outline-offset: 0;
+}
+
+#cqs-schedule-panel .cqs-schedule-zone {
+  margin-top: 5px;
+  color: var(--text-secondary, #6b7280);
+  font-size: 10px;
+}
+
+#cqs-schedule-panel .cqs-schedule-actions {
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+#cqs-schedule-panel .cqs-schedule-actions button {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+#cqs-schedule-panel .cqs-schedule-actions .cqs-schedule-primary {
+  border-color: rgb(16, 163, 127);
+  background: rgb(16, 163, 127);
+  color: #ffffff;
+}
+
+#cqs-schedule-panel .cqs-schedule-actions .cqs-schedule-primary:hover:not(:disabled),
+#cqs-schedule-panel .cqs-schedule-actions .cqs-schedule-primary:focus-visible {
+  background: rgb(13, 145, 112);
+}
+
+#cqs-schedule-panel .cqs-schedule-manager-hint {
+  margin-top: 9px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: color-mix(in srgb, rgb(16, 163, 127) 8%, transparent);
+  color: var(--text-secondary, #6b7280);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+#cqs-schedule-panel .cqs-schedule-divider {
+  height: 1px;
+  margin: 12px 0 10px;
+  background: rgba(142, 142, 160, 0.2);
+}
+
+#cqs-schedule-panel .cqs-schedule-list-head {
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 11px;
+}
+
+#cqs-schedule-panel .cqs-schedule-list-head > span {
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary, #111827) 8%, transparent);
+  text-align: center;
+  font-weight: 750;
+}
+
+#cqs-schedule-panel .cqs-schedule-list {
+  display: grid;
+  gap: 6px;
+}
+
+#cqs-schedule-panel .cqs-schedule-empty {
+  padding: 8px 4px;
+  color: var(--text-secondary, #6b7280);
+  font-size: 11px;
+}
+
+#cqs-schedule-panel .cqs-schedule-item {
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid rgba(142, 142, 160, 0.18);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--main-surface-secondary, #f7f7f8) 72%, transparent);
+}
+
+#cqs-schedule-panel .cqs-schedule-item-body {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+#cqs-schedule-panel .cqs-schedule-item-body strong {
+  font-size: 11px;
+  font-weight: 720;
+}
+
+#cqs-schedule-panel .cqs-schedule-item-body span {
+  overflow: hidden;
+  color: var(--text-secondary, #6b7280);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#cqs-schedule-panel .cqs-schedule-item > button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 10px;
+}
+
+@media (max-width: 640px) {
+  #cqs-schedule-panel {
+    max-height: 62vh;
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  #cqs-schedule-panel .cqs-schedule-hint {
+    font-size: 10px;
+  }
+
+  #cqs-schedule-panel textarea {
+    min-height: 64px;
+  }
+}
+
+
+/* v0.8.9: direct download action beside assistant file citations. */
+.cqs-direct-download-button[data-cqs-direct-download="1"] {
+  appearance: none;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  margin-inline-start: 2px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  vertical-align: -5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  opacity: 0.68;
+}
+
+.cqs-direct-download-button[data-cqs-direct-download="1"]:hover:not(:disabled),
+.cqs-direct-download-button[data-cqs-direct-download="1"]:focus-visible {
+  background: color-mix(in srgb, currentColor 9%, transparent);
+  opacity: 1;
+  outline: none;
+}
+
+.cqs-direct-download-button[data-cqs-direct-download="1"]:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.cqs-direct-download-button[data-cqs-direct-download="1"]:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.cqs-direct-download-button[data-cqs-direct-download="1"] svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.cqs-direct-download-button[data-cqs-direct-download="1"][data-cqs-state="loading"] svg {
+  animation: cqs-direct-download-spin 0.8s linear infinite;
+}
+
+.cqs-direct-download-button[data-cqs-direct-download="1"][data-cqs-state="success"] {
+  opacity: 1;
+}
+
+.cqs-direct-download-button[data-cqs-direct-download="1"][data-cqs-state="error"] {
+  opacity: 1;
+}
+
+@keyframes cqs-direct-download-spin {
+  to { transform: rotate(360deg); }
 }

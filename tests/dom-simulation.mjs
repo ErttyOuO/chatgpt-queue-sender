@@ -42,6 +42,8 @@ function createDom(storageState = {}, url = 'https://chatgpt.com/c/mock-conversa
   window.HTMLElement.prototype.focus = function () { this._focused = true; };
   window.document.execCommand = () => false;
   window.mockMessages = [];
+  window.mockScheduledItems = [];
+  let contentRuntimeListener = null;
   window.browser = {
     storage: {
       local: {
@@ -55,6 +57,7 @@ function createDom(storageState = {}, url = 'https://chatgpt.com/c/mock-conversa
     },
     runtime: {
       getURL(path) { return `moz-extension://test/${path}`; },
+      onMessage: { addListener(listener) { contentRuntimeListener = listener; } },
       async sendMessage(message) {
         window.mockMessages.push(message);
         if (message.type === 'CQS_GET_TAB_CONTEXT') return { tabId: 101 };
@@ -63,6 +66,23 @@ function createDom(storageState = {}, url = 'https://chatgpt.com/c/mock-conversa
         if (message.type === 'CQS_QUEUE_LEASE_RENEW') return { ok: true };
         if (message.type === 'CQS_QUEUE_LEASE_RELEASE') return { ok: true };
         if (message.type === 'CQS_QUEUE_LEASE_TRANSFER') return { ok: true };
+        if (message.type === 'CQS_SCHEDULE_SCOPE_TRANSFER') return { ok: true, changed: true };
+        if (message.type === 'CQS_SCHEDULE_LIST') return { ok: true, items: [...window.mockScheduledItems] };
+        if (message.type === 'CQS_SCHEDULE_CREATE') {
+          const item = {
+            id: `schedule-${window.mockScheduledItems.length + 1}`,
+            text: message.text,
+            scheduledAt: message.scheduledAt,
+            scopeKey: message.scopeKey,
+            status: 'scheduled',
+          };
+          window.mockScheduledItems.push(item);
+          return { ok: true, item };
+        }
+        if (message.type === 'CQS_SCHEDULE_CANCEL') {
+          window.mockScheduledItems = window.mockScheduledItems.filter((item) => item.id !== message.id);
+          return { ok: true };
+        }
         return { shown: true };
       },
     },
@@ -168,7 +188,16 @@ function createDom(storageState = {}, url = 'https://chatgpt.com/c/mock-conversa
   });
   updateSend();
   window.eval(contentScript);
-  return { dom, window, storageState, input, send, voice, conversation };
+  return {
+    dom,
+    window,
+    storageState,
+    input,
+    send,
+    voice,
+    conversation,
+    getContentRuntimeListener() { return contentRuntimeListener; },
+  };
 }
 
 async function scenarioSequential() {
@@ -468,6 +497,75 @@ async function scenarioImageUploadKeepsQueueBesidePlus() {
 }
 
 
+async function scenarioLongPressScheduledPanel() {
+  const env = createDom({}, 'https://chatgpt.com/c/schedule-panel-12345678');
+  try {
+    const { window, input } = env;
+    const button = await waitFor(() => window.document.querySelector('#cqs-floating-button'));
+    input.textContent = '晚上七點要自動發送';
+    input.dispatchEvent(new window.InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+
+    const down = new window.Event('pointerdown', { bubbles: true, cancelable: true });
+    Object.defineProperty(down, 'pointerType', { value: 'mouse' });
+    Object.defineProperty(down, 'button', { value: 0 });
+    button.dispatchEvent(down);
+    await wait(760);
+
+    const panel = window.document.querySelector('#cqs-schedule-panel');
+    if (!panel || panel.hidden) throw new Error('long press did not open scheduled-send panel');
+    const textarea = panel.querySelector('[data-cqs-schedule-text]');
+    const timeInput = panel.querySelector('[data-cqs-schedule-time]');
+    if (textarea?.value !== '晚上七點要自動發送') throw new Error('schedule panel did not copy composer text');
+    if (timeInput?.type !== 'datetime-local' || !timeInput.value) throw new Error('schedule datetime-local input missing');
+
+    timeInput.value = (() => {
+      const d = new Date(Date.now() + 10 * 60 * 1000);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    })();
+    panel.querySelector('[data-cqs-schedule-action="create"]').click();
+    await waitFor(() => window.mockMessages.some((message) => message.type === 'CQS_SCHEDULE_CREATE'), 3000);
+    await waitFor(() => window.mockScheduledItems.length === 1, 3000);
+    if ((input.textContent || '').trim()) throw new Error('composer text was not cleared after scheduling');
+    if (window.mockScheduledItems[0].text !== '晚上七點要自動發送') throw new Error('scheduled text mismatch');
+    await waitFor(() => panel.hidden, 3000);
+    const manager = await waitFor(() => {
+      const node = window.document.querySelector('#cqs-manager');
+      return node && !node.hidden ? node : null;
+    }, 3000);
+    const scheduledCard = await waitFor(() => manager.querySelector('[data-cqs-schedule-id]'), 3000);
+    if (!scheduledCard.classList.contains('cqs-item-scheduled')) throw new Error('scheduled message did not use the normal queue card location');
+    const scheduledText = scheduledCard.querySelector('[data-cqs-scheduled-text]');
+    if (scheduledText?.value !== '晚上七點要自動發送') throw new Error('scheduled message content missing from queue manager');
+    if (panel.querySelector('[data-cqs-schedule-list]')) throw new Error('schedule panel still contains a separate scheduled list');
+    return { panelOpened: true, scheduled: true, managerUnified: true };
+  } finally {
+    env.dom.window.close();
+  }
+}
+
+async function scenarioBackgroundScheduledFire() {
+  const env = createDom({}, 'https://chatgpt.com/c/schedule-fire-12345678');
+  try {
+    const { window } = env;
+    await waitFor(() => window.document.querySelector('#cqs-floating-button'));
+    const listener = await waitFor(() => env.getContentRuntimeListener());
+    const response = await listener({
+      type: 'CQS_SCHEDULE_FIRE',
+      scheduleId: 'schedule-fire-test',
+      text: '背景分頁定時訊息',
+      scopeKey: 'conversation:schedule-fire-12345678',
+      scheduledAt: Date.now(),
+    }, {}, () => {});
+    if (!response?.ok) throw new Error(`scheduled fire failed: ${response?.message || 'unknown'}`);
+    const user = await waitFor(() => window.mockEvents.find((event) => event.type === 'user' && event.text === '背景分頁定時訊息'), 6000);
+    return { submitted: Boolean(user), responseOk: response.ok };
+  } finally {
+    env.dom.window.close();
+  }
+}
+
+
 const results = {};
 for (const [name, scenario] of [
   ['sequential', scenarioSequential],
@@ -479,6 +577,8 @@ for (const [name, scenario] of [
   ['conversationIsolation', scenarioConversationIsolation],
   ['agentWorkDoesNotInterrupt', scenarioAgentWorkDoesNotInterrupt],
   ['imageUploadKeepsQueueBesidePlus', scenarioImageUploadKeepsQueueBesidePlus],
+  ['longPressScheduledPanel', scenarioLongPressScheduledPanel],
+  ['backgroundScheduledFire', scenarioBackgroundScheduledFire],
 ]) {
   console.log(`[test] start ${name}`);
   results[name] = await scenario();

@@ -444,6 +444,16 @@
     return typeof direct === "string" ? direct : "";
   }
 
+  async function getDownloadContext() {
+    const conversationId = getConversationId();
+    const session = await getSession();
+    return {
+      conversationId,
+      accessToken: String(session?.accessToken || session?.access_token || ""),
+      accountId: accountIdFromSession(session),
+    };
+  }
+
   async function fetchConversationData(conversationId, accessToken = "", accountId = "") {
     const headers = {};
     if (accessToken) headers.authorization = `Bearer ${accessToken}`;
@@ -737,6 +747,7 @@
     scanMessageForFileRefs,
     collectAttachments,
     resolveAttachment,
+    getDownloadContext,
     fileInfoRequests,
   });
 })();

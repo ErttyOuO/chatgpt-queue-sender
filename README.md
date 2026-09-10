@@ -6,7 +6,7 @@
 **Firefox 上的 ChatGPT 訊息佇列助手**  
 先排好提示詞，等待上一則回覆真正完成後，再安全地自動送出下一則。
 
-[![Version](https://img.shields.io/badge/version-0.8.6-2f81f7)](#版本資訊)
+[![Version](https://img.shields.io/badge/version-0.8.9-2f81f7)](#版本資訊)
 [![Firefox Add-ons](https://img.shields.io/badge/Firefox%20Add--ons-Install-FF7139?logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)
 [![Firefox](https://img.shields.io/badge/Firefox-140%2B-FF7139?logo=firefoxbrowser&logoColor=white)](#安裝)
 [![Manifest](https://img.shields.io/badge/Manifest-V3-555)](./manifest.json)
@@ -31,6 +31,7 @@ ChatGPT Queue Sender 會在 ChatGPT 輸入框的 **「+」旁邊**加入一個�
 | 功能 | 說明 |
 | --- | --- |
 | 📨 訊息佇列 | 最多 10 則待送提示詞，自動逐則處理 |
+| ⏰ 單次定時發送 | 長按「加入佇列」設定日期與時間；到點由 Firefox 背景排程觸發 |
 | 🔒 聊天室隔離 | 每個 conversation ID 使用獨立佇列，不會跨聊天室誤送 |
 | 🗂️ 多分頁保護 | 同一聊天室多分頁時，只允許一個分頁持有發送租約 |
 | 🛑 安全完成判定 | 避免 ChatGPT 還在 Thinking / Working / Running 時提早送出下一則 |
@@ -39,6 +40,7 @@ ChatGPT Queue Sender 會在 ChatGPT 輸入框的 **「+」旁邊**加入一個�
 | 💾 自訂提示語 | 常用提示語儲存在 Firefox 本機，可快速複製或送入目前聊天室 |
 | 📝 Markdown 匯出 | 匯出目前顯示的對話分支 |
 | 📦 完整 ZIP 封存 | Markdown + 使用者上傳 + ChatGPT 提供檔案 + 匯出報告 |
+| ⬇️ GPT 檔案直接下載 | ChatGPT 提供的檔案連結旁直接顯示下載按鈕，不必先開預覽再進三點選單 |
 | 🔁 對話交接 | 產生可帶到新聊天室使用的結構化交接摘要 |
 | 🌐 中英文介面 | 中文 Firefox 顯示中文，其他 Firefox 語言預設英文 |
 
@@ -116,7 +118,7 @@ ChatGPT Queue Sender 已正式上架 Firefox Add-ons，可直接從 Mozilla 官�
 
 **[🦊 前往 Firefox Add-ons 安裝 ChatGPT 佇列發送/批次發送](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)**
 
-商店版本：**v0.8.6**
+Firefox Add-ons 目前已上架版本：**v0.8.6**；此 repository 的 v0.8.9 需另外提交 Mozilla 審核後才會同步到商店。
 
 安裝後開啟或重新整理：
 
@@ -174,6 +176,49 @@ ChatGPT Queue Sender 已正式上架 Firefox Add-ons，可直接從 Mozilla 官�
 
 把輸入內容分成多則訊息後一次加入佇列。
 
+### 單次定時發送（v0.8.7 起）
+
+> **v0.8.8 UI 更新：** 長按面板只負責設定內容與時間。設定完成後，定時訊息會直接出現在原本右下角的佇列管理抽屜，和一般佇列放在同一個位置；以「定時」標籤與預定時間區分。
+
+**長按輸入框 `+` 旁邊的「加入佇列」按鈕約 0.7 秒**，即可開啟小型定時設定面板。
+
+定時發送和一般佇列分開，**每一筆排程都只執行一次，不會循環**。
+
+1. 在 ChatGPT 輸入框準備要發送的內容。
+2. 長按「加入佇列」。
+3. 在定時面板確認／編輯文字。
+4. 選擇日期與時間。
+5. 點擊 **設定定時發送**。
+6. 原本輸入框若仍是同一段文字，設定成功後會自動清空。
+7. 到達排定時間時，Firefox 背景排程會尋找綁定的聊天室分頁並嘗試送出。
+
+排程使用 `browser.alarms` 的絕對時間 (`when`)。時間來源是 Firefox／作業系統時鐘；現代作業系統通常會透過網路自動校時，本擴充功能**不會為了校時連線到第三方時間伺服器**。
+
+時間到時，即使：
+
+- ChatGPT 分頁不是目前作用中的分頁
+- 你正在瀏覽其他網站
+- Firefox 視窗已最小化
+
+只要 **Firefox 仍在執行、目標 ChatGPT 聊天室分頁仍可被擴充功能找到且頁面可操作**，背景腳本仍會嘗試發送。
+
+每次定時發送會顯示：
+
+- 排程時間到、開始嘗試發送
+- 發送成功
+- 或發送失敗與原因
+
+為避免誤送，以下情況會直接判定這次單次排程失敗，而不是偷偷延後重試：
+
+- 目標聊天室已關閉或切到其他聊天室
+- ChatGPT 當下仍在處理另一個回覆
+- 同一聊天室另一個分頁正在執行佇列
+- 輸入框已有未送出的手動草稿
+- Firefox 未能在排定時間附近執行，且已超過 2 分鐘容許範圍
+
+> [!IMPORTANT]
+> Firefox **完全關閉**時，擴充功能無法在關閉期間操作 ChatGPT。v0.8.7 會把未來排程保存在本機並在 Firefox 背景重啟後重建 alarm；若已錯過時間超過 2 分鐘，則會標記失敗而不補送，避免很晚之後突然送出舊訊息。
+
 ### 管理佇列
 
 右下角管理抽屜可用來：
@@ -201,7 +246,7 @@ ChatGPT Queue Sender 已正式上架 Firefox Add-ons，可直接從 Mozilla 官�
 - 只在離開目前 ChatGPT 分頁時提醒
 - 測試提醒
 
-`notifications` 是 **選用權限**，只有使用者主動開啟系統通知時才會要求。
+v0.8.7 起 `notifications` 為必要權限，用來保證定時發送可以回報觸發／成功／失敗；上方開關仍只控制一般「回覆完成」系統通知。
 
 ---
 
@@ -217,6 +262,24 @@ ChatGPT Queue Sender 已正式上架 Firefox Add-ons，可直接從 Mozilla 官�
 - 實際發送時仍只會加入目前聊天室的佇列
 
 資料保存在 Firefox WebExtension 本機 storage。
+
+---
+
+## GPT 提供檔案直接下載
+
+從 v0.8.9 開始，ChatGPT 回覆中的檔案引用旁會多一顆小型下載按鈕。
+
+原本的檔名按鈕完全保留：
+
+- 點檔名 → 仍可進入 ChatGPT 原生預覽
+- 點右側下載圖示 → 直接交給 Firefox 下載管理器
+
+擴充功能會優先讀取 ChatGPT 檔案引用上的 `data-file-citation-primary-file-id`，重新解析目前登入狀態可用的下載網址，再開始下載。若簽名網址在短時間內失效，背景腳本會透過 file ID 再解析一次，而不是要求使用者重新開啟預覽。
+
+此功能只注入到 **ChatGPT assistant 回覆中的檔案引用**；使用者自己的上傳引用不會被額外加上這顆按鈕。直接下載按鈕本身也會被 Markdown／ZIP 匯出器排除，不會污染聊天原文或造成附件重複。
+
+> [!NOTE]
+> v0.8.9 新增 Firefox `downloads` 權限，用途只有在使用者明確點擊這顆下載按鈕時，將選定檔案交給 Firefox 原生下載管理器。
 
 ---
 
@@ -303,14 +366,14 @@ ChatGPT Queue Sender：
 必要權限：
 
 ```json
-"permissions": ["storage"]
+"permissions": ["storage", "alarms", "notifications", "downloads"]
 ```
 
-選用權限：
+- `storage`：保存聊天室佇列、自訂提示語與單次定時排程。
+- `alarms`：讓 Firefox 背景在指定絕對時間觸發一次性定時發送。
+- `notifications`：顯示定時發送的觸發、成功或失敗結果；一般「回覆完成通知」仍可在 popup 中自行關閉。
 
-```json
-"optional_permissions": ["notifications"]
-```
+- `downloads`：只有在使用者點擊 GPT 檔案旁的直接下載按鈕時啟動 Firefox 下載管理器
 
 附件封存需要存取 ChatGPT / OpenAI / oaiusercontent 控制的檔案主機。背景腳本只允許指定 OpenAI 相關 HTTPS 網域，其他網站會在程式層被拒絕。
 
@@ -343,6 +406,7 @@ npm run verify
 npm run check
 npm run test:pure
 npm run test:safety
+npm run test:schedule
 npm run test:dom
 npm run lint:amo
 ```
@@ -415,7 +479,7 @@ npm run lint:amo
 | [CHANGELOG.md](./CHANGELOG.md) | 版本變更紀錄 |
 | [FIREFOX_STORE_LISTING.md](./FIREFOX_STORE_LISTING.md) | Firefox Add-ons 商店文案與權限說明 |
 | [AMO_UPLOAD_NOTES.md](./AMO_UPLOAD_NOTES.md) | AMO 上傳注意事項 |
-| [VALIDATION_REPORT.md](./VALIDATION_REPORT.md) | v0.8.6 驗證報告 |
+| [VALIDATION_REPORT.md](./VALIDATION_REPORT.md) | v0.8.9 驗證報告 |
 
 ---
 
@@ -440,11 +504,15 @@ npm run lint:amo
 
 ## 版本資訊
 
-目前版本：**v0.8.6**  
-Firefox Add-ons：**已正式上架** — [前往官方商店安裝](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)
+目前版本：**v0.8.9**  
+Firefox Add-ons：**已正式上架** — [前往官方商店安裝](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)  
+目前 repository / source 為 **v0.8.9**；商店版需在 v0.8.9 上傳並通過 Mozilla 審核後才會同步。
 
 近期重點：
 
+- **v0.8.9** — ChatGPT 提供檔案的引用旁新增直接下載按鈕，略過原生預覽／三點下載流程
+- **v0.8.8** — 定時訊息改與一般佇列顯示在同一個右下角管理抽屜；長按面板只負責設定時間
+- **v0.8.7** — 新增長按「加入佇列」的一次性定時發送、背景 alarm、成功／失敗通知與聊天室綁定防誤送
 - **v0.8.6** — 防止 ChatGPT 工具 / 程式工作尚未完成時誤送下一則；修正圖片上傳後佇列按鈕錯位
 - **v0.8.5** — 補強 React 無 `href` 下載按鈕、sandbox-only 附件、hidden tool/system 附件解析
 - **v0.8.4** — 完整對話 ZIP 加入 `Beta` 標籤
@@ -462,15 +530,17 @@ Firefox Add-ons：**已正式上架** — [前往官方商店安裝](https://add
 
 **ChatGPT Queue Sender** is a local-first Firefox extension for the ChatGPT web interface. It is officially available on [Firefox Add-ons](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/) and adds a conversation-scoped prompt queue, reusable saved prompts, completion alerts, Markdown export, a Beta ZIP conversation archive with selected attachments, and handoff tools.
 
-The extension waits for the current ChatGPT response to actually finish before submitting the next queued prompt. v0.8.6 also guards against long coding/tool tasks where the native Send button may return before the assistant has fully completed its work.
+The extension waits for the current ChatGPT response to actually finish before submitting the next queued prompt. v0.8.6 guards against long coding/tool tasks where the native Send button may return early. v0.8.7 adds one-time scheduled sends: long-press Add to queue, choose a local date/time, and Firefox alarms will trigger the bound ChatGPT tab in the background.
 
 Key points:
 
 - Conversation-scoped local queues
+- One-time scheduled sends with background alarms and success/failure notifications
 - Multi-tab lease protection
 - Conservative completion detection
 - Saved prompt library
-- Optional local sound/system notifications
+- Configurable completion sound/notification settings; scheduled-send result notifications are always local
+- Direct-download button beside ChatGPT-provided file citations
 - Markdown export
 - ZIP archive Beta with attachment review and version selection
 - Conversation handoff workflow

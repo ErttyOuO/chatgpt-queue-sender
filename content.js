@@ -5,9 +5,12 @@
   const tr = globalThis.CQS_I18N?.t || ((zhTW, _en, values = {}) => String(zhTW ?? "").replace(/\{([A-Za-z0-9_]+)\}/g, (match, key) => values?.[key] ?? match));
 
   const MAX_QUEUE = 10;
+  const SCHEDULE_LONG_PRESS_MS = 700;
+  const SCHEDULE_MIN_LEAD_MS = 5000;
   const LEGACY_STORE_KEY = "cqs_queue_sender_state_v4";
   const STORE_PREFIX = "cqs_queue_sender_state_v5:";
   const NOTIFICATION_SETTINGS_KEY = "cqs_notification_settings_v1";
+  const SCHEDULE_STORAGE_KEY = "cqs_scheduled_messages_v1";
   const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
     enabled: false,
     desktop: true,
@@ -46,6 +49,12 @@
     leaseRenewTimer: null,
     leaseRenewMisses: 0,
     pendingPersist: Promise.resolve(),
+    scheduledSendActive: false,
+    schedulePanelOpen: false,
+    scheduleLongPressTimer: null,
+    scheduleLongPressTriggered: false,
+    scheduleDraftSource: "",
+    scheduleItems: [],
     responseMonitor: {
       initialized: false,
       path: location.pathname,
@@ -360,6 +369,7 @@
     resetResponseMonitor({ keepBusy: true });
     markManagerDirty();
     renderUi();
+    void refreshScheduledItems();
   }
 
   async function switchQueueScopeIfNeeded() {
@@ -374,8 +384,17 @@
     const previousScopeKey = state.scopeKey;
     const previousQueueCount = state.queue.length;
     try {
-      const draftBecameConversation = isDraftScope(previousScopeKey)
-        && isConversationScope(nextScopeKey)
+      const draftRouteBecameConversation = isDraftScope(previousScopeKey)
+        && isConversationScope(nextScopeKey);
+      if (draftRouteBecameConversation) {
+        await sendExtensionMessage({
+          type: "CQS_SCHEDULE_SCOPE_TRANSFER",
+          fromScopeKey: previousScopeKey,
+          toScopeKey: nextScopeKey,
+        });
+      }
+
+      const draftBecameConversation = draftRouteBecameConversation
         && (state.running || state.queue.length > 0);
 
       if (draftBecameConversation) {
@@ -412,6 +431,7 @@
       resetResponseMonitor({ keepBusy: true });
       markManagerDirty();
       renderUi();
+      void refreshScheduledItems();
 
       if (previousQueueCount > 0) {
         showToast(tr("原佇列已保留在原本的 ChatGPT 聊天室，不會在目前聊天室送出。", "The original queue was kept in its ChatGPT conversation and will not send in the current conversation."), { duration: 5200 });
@@ -434,7 +454,7 @@
   }
 
   function isCqsUi(el) {
-    return Boolean(el?.closest?.("#cqs-preview-bar, #cqs-manager, #cqs-toast, #cqs-floating-button"));
+    return Boolean(el?.closest?.("#cqs-preview-bar, #cqs-manager, #cqs-toast, #cqs-floating-button, #cqs-schedule-panel"));
   }
 
   function getRunTotal() {
@@ -1054,6 +1074,253 @@
     state.managerDirty = true;
   }
 
+  function formatLocalDateTimeInput(epochMs) {
+    const date = new Date(epochMs);
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function defaultScheduledEpoch() {
+    const date = new Date(Date.now() + 5 * 60 * 1000);
+    date.setSeconds(0, 0);
+    if (date.getTime() < Date.now() + SCHEDULE_MIN_LEAD_MS) date.setMinutes(date.getMinutes() + 1);
+    return date.getTime();
+  }
+
+  function getScheduleTimeZoneLabel() {
+    let zone = "";
+    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) {}
+    const offsetMinutes = -new Date().getTimezoneOffset();
+    const sign = offsetMinutes >= 0 ? "+" : "-";
+    const hours = Math.floor(Math.abs(offsetMinutes) / 60);
+    const minutes = Math.abs(offsetMinutes) % 60;
+    const offset = `UTC${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+    return zone ? `${zone} · ${offset}` : offset;
+  }
+
+  function formatScheduledDisplay(epochMs) {
+    try {
+      return new Intl.DateTimeFormat(globalThis.CQS_I18N?.isEnglish ? "en-US" : "zh-TW", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(epochMs));
+    } catch (_) {
+      return new Date(epochMs).toLocaleString();
+    }
+  }
+
+  function scheduleReasonMessage(reason) {
+    const key = String(reason || "");
+    const messages = {
+      "time-too-soon": tr("排定時間必須至少晚於現在幾秒鐘。", "The scheduled time must be at least a few seconds in the future."),
+      "time-too-far": tr("目前最多可排定一年內的時間。", "Scheduled sends are currently limited to one year ahead."),
+      "scope-mismatch": tr("聊天室已切換，請重新開啟定時設定。", "The conversation changed. Reopen the schedule panel."),
+      "alarms-unavailable": tr("Firefox 定時排程 API 目前無法使用。", "Firefox's scheduling API is currently unavailable."),
+      "alarm-create-failed": tr("Firefox 無法建立這次定時排程。", "Firefox could not create this scheduled send."),
+      "already-firing": tr("這則定時訊息已開始發送，無法再取消。", "This scheduled message has already started sending and can no longer be canceled."),
+      "not-found": tr("找不到這則定時訊息，可能已經送出或取消。", "This scheduled message no longer exists. It may already have been sent or canceled."),
+    };
+    return messages[key] || tr("定時發送設定失敗。", "Could not save the scheduled send.");
+  }
+
+  function ensureSchedulePanel() {
+    let panel = document.getElementById("cqs-schedule-panel");
+    if (panel) return panel;
+
+    panel = document.createElement("section");
+    panel.id = "cqs-schedule-panel";
+    panel.hidden = true;
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "false");
+    panel.setAttribute("aria-label", tr("定時發送", "Scheduled send"));
+    panel.innerHTML = `
+      <div class="cqs-schedule-head">
+        <div>
+          <strong>${tr("定時發送", "Scheduled send")}</strong>
+          <span>${tr("單次", "One-time")}</span>
+        </div>
+        <button type="button" class="cqs-schedule-close" data-cqs-schedule-action="close" aria-label="${tr("關閉", "Close")}">×</button>
+      </div>
+      <div class="cqs-schedule-hint">${tr("長按「加入佇列」可開啟。時間使用 Firefox／系統時鐘，通常由作業系統透過網路自動校時；不連接第三方時間伺服器。", "Long-press Add to queue to open this panel. Timing uses the Firefox/system clock, which is normally network-synchronized by your operating system; no third-party time server is contacted.")}</div>
+      <label class="cqs-schedule-field">
+        <span>${tr("要發送的內容", "Message to send")}</span>
+        <textarea rows="3" data-cqs-schedule-text></textarea>
+      </label>
+      <label class="cqs-schedule-field">
+        <span>${tr("發送時間", "Send at")}</span>
+        <input type="datetime-local" step="60" data-cqs-schedule-time>
+      </label>
+      <div class="cqs-schedule-zone" data-cqs-schedule-zone></div>
+      <div class="cqs-schedule-actions">
+        <button type="button" data-cqs-schedule-action="close">${tr("取消", "Cancel")}</button>
+        <button type="button" class="cqs-schedule-primary" data-cqs-schedule-action="create">${tr("設定定時發送", "Schedule send")}</button>
+      </div>
+      <div class="cqs-schedule-manager-hint">${tr("設定完成後會顯示在原本的佇列管理抽屜中，和一般佇列內容放在同一個位置。", "After scheduling, the message appears in the normal queue manager alongside regular queued messages.")}</div>
+    `;
+    document.body.appendChild(panel);
+
+    panel.addEventListener("click", async (event) => {
+      const button = event.target?.closest?.("[data-cqs-schedule-action]");
+      if (!button) return;
+      const action = button.dataset.cqsScheduleAction;
+      if (action === "close") {
+        closeSchedulePanel();
+        return;
+      }
+      if (action === "create") {
+        await createScheduledSendFromPanel();
+        return;
+      }
+    });
+
+    return panel;
+  }
+
+  function positionSchedulePanel() {
+    const panel = document.getElementById("cqs-schedule-panel");
+    const button = document.getElementById("cqs-floating-button");
+    if (!panel || panel.hidden || !button) return;
+    const rect = button.getBoundingClientRect();
+    const width = Math.min(420, Math.max(300, window.innerWidth - 24));
+    const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.left + rect.width / 2 - width / 2));
+    const bottom = Math.max(12, window.innerHeight - rect.top + 10);
+    panel.style.width = `${width}px`;
+    panel.style.left = `${left}px`;
+    panel.style.bottom = `${bottom}px`;
+  }
+
+  function closeSchedulePanel() {
+    const panel = document.getElementById("cqs-schedule-panel");
+    if (panel) panel.hidden = true;
+    state.schedulePanelOpen = false;
+  }
+
+  async function refreshScheduledItems(options = {}) {
+    const response = await sendExtensionMessage({
+      type: "CQS_SCHEDULE_LIST",
+      scopeKey: state.scopeKey,
+    });
+    state.scheduleItems = Array.isArray(response?.items) ? response.items : [];
+    state.scheduleItems.sort((a, b) => Number(a?.scheduledAt || 0) - Number(b?.scheduledAt || 0));
+    markManagerDirty();
+    if (options.render !== false) renderUi();
+    return state.scheduleItems;
+  }
+
+  async function openSchedulePanel() {
+    if (!state.initialized) return;
+    if (!(await ensureQueueScopeReadyForInput())) {
+      showToast(tr("聊天室正在切換，請稍候再設定定時發送。", "The conversation is switching. Wait a moment before scheduling."));
+      return;
+    }
+    const panel = ensureSchedulePanel();
+    const text = getComposerText().trim();
+    state.scheduleDraftSource = text;
+    const textarea = panel.querySelector("[data-cqs-schedule-text]");
+    const timeInput = panel.querySelector("[data-cqs-schedule-time]");
+    const zone = panel.querySelector("[data-cqs-schedule-zone]");
+    if (textarea) textarea.value = text;
+    const minimum = formatLocalDateTimeInput(Date.now() + 60 * 1000);
+    if (timeInput) {
+      timeInput.min = minimum;
+      if (!timeInput.value || new Date(timeInput.value).getTime() < Date.now() + SCHEDULE_MIN_LEAD_MS) {
+        timeInput.value = formatLocalDateTimeInput(defaultScheduledEpoch());
+      }
+    }
+    if (zone) zone.textContent = tr("時區：{zone}", "Time zone: {zone}", { zone: getScheduleTimeZoneLabel() });
+    panel.hidden = false;
+    state.schedulePanelOpen = true;
+    positionSchedulePanel();
+    await refreshScheduledItems();
+    positionSchedulePanel();
+    setTimeout(() => timeInput?.focus?.(), 0);
+  }
+
+  async function createScheduledSendFromPanel() {
+    const panel = ensureSchedulePanel();
+    const textarea = panel.querySelector("[data-cqs-schedule-text]");
+    const timeInput = panel.querySelector("[data-cqs-schedule-time]");
+    const createButton = panel.querySelector("[data-cqs-schedule-action='create']");
+    const text = String(textarea?.value || "").trim();
+    const scheduledAt = new Date(String(timeInput?.value || "")).getTime();
+    if (!text) {
+      showToast(tr("定時訊息沒有內容。", "The scheduled message is empty."));
+      textarea?.focus?.();
+      return;
+    }
+    if (!Number.isFinite(scheduledAt) || scheduledAt < Date.now() + SCHEDULE_MIN_LEAD_MS) {
+      showToast(tr("請選擇晚於目前時間的發送時間。", "Choose a send time in the future."));
+      timeInput?.focus?.();
+      return;
+    }
+
+    if (createButton) createButton.disabled = true;
+    const response = await sendExtensionMessage({
+      type: "CQS_SCHEDULE_CREATE",
+      text,
+      scheduledAt,
+      scopeKey: state.scopeKey,
+      conversationId: getConversationId(),
+      url: location.href,
+      timeZone: (() => {
+        try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) { return ""; }
+      })(),
+    });
+    if (createButton) createButton.disabled = false;
+
+    if (!response?.ok) {
+      showToast(scheduleReasonMessage(response?.reason), { duration: 5200 });
+      return;
+    }
+
+    if (state.scheduleDraftSource) clearComposerIfMatches(state.scheduleDraftSource);
+    state.scheduleDraftSource = "";
+    if (textarea) textarea.value = "";
+    if (timeInput) timeInput.value = formatLocalDateTimeInput(defaultScheduledEpoch());
+    showToast(tr("已設定 {time} 單次發送。即使切到其他分頁或最小化視窗，Firefox 仍會由背景排程觸發。", "One-time send scheduled for {time}. Firefox will trigger it in the background even if you switch tabs or minimize the window.", {
+      time: formatScheduledDisplay(scheduledAt),
+    }), { duration: 6200 });
+    await refreshScheduledItems({ render: false });
+    closeSchedulePanel();
+    state.managerOpen = true;
+    markManagerDirty();
+    renderUi();
+  }
+
+  function clearScheduleLongPressTimer() {
+    if (state.scheduleLongPressTimer) clearTimeout(state.scheduleLongPressTimer);
+    state.scheduleLongPressTimer = null;
+  }
+
+  function onQueueButtonPointerDown(event) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    clearScheduleLongPressTimer();
+    state.scheduleLongPressTriggered = false;
+    state.scheduleLongPressTimer = setTimeout(() => {
+      state.scheduleLongPressTimer = null;
+      state.scheduleLongPressTriggered = true;
+      void openSchedulePanel();
+    }, SCHEDULE_LONG_PRESS_MS);
+  }
+
+  function onQueueButtonPointerEnd() {
+    clearScheduleLongPressTimer();
+  }
+
+  function onQueueButtonClick(event) {
+    if (state.scheduleLongPressTriggered) {
+      state.scheduleLongPressTriggered = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    addCurrentComposerToQueue();
+  }
+
   function ensureQueueButton() {
     const anchor = getQueueAnchorButton();
     const send = getSendButton(false);
@@ -1063,7 +1330,7 @@
       btn.id = "cqs-floating-button";
       btn.type = "button";
       btn.dataset.cqsQueueButton = "1";
-      btn.title = tr("加入佇列。多則訊息可用單獨一行 --- 分隔。", "Add to queue. Separate multiple messages with --- on its own line.");
+      btn.title = tr("短按加入佇列；長按開啟單次定時發送。多則佇列訊息可用單獨一行 --- 分隔。", "Click to add to queue; long-press for a one-time scheduled send. Separate queued messages with --- on its own line.");
       btn.innerHTML = `
         <span class="cqs-btn-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1080,7 +1347,14 @@
         <span class="cqs-btn-label">${tr("加入佇列", "Add to queue")}</span>
         <span class="cqs-btn-badge" aria-hidden="true" hidden></span>
       `;
-      btn.addEventListener("click", addCurrentComposerToQueue);
+      btn.addEventListener("pointerdown", onQueueButtonPointerDown);
+      btn.addEventListener("pointerup", onQueueButtonPointerEnd);
+      btn.addEventListener("pointercancel", onQueueButtonPointerEnd);
+      btn.addEventListener("pointerleave", onQueueButtonPointerEnd);
+      btn.addEventListener("click", onQueueButtonClick);
+      btn.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+      });
     }
 
     if (anchor?.parentElement) {
@@ -1104,14 +1378,26 @@
   function updateFloatingButton() {
     const floating = document.getElementById("cqs-floating-button");
     if (!floating) return;
-    const count = state.queue.length;
+    const queueCount = state.queue.length;
+    const scheduledCount = state.scheduleItems.length;
+    const count = queueCount + scheduledCount;
     const badge = floating.querySelector(".cqs-btn-badge");
     if (badge) {
       setTextIfChanged(badge, String(count));
       badge.hidden = count === 0;
     }
     floating.classList.toggle("cqs-has-queue", count > 0);
-    floating.setAttribute("aria-label", count ? tr("加入佇列，目前 {count} 則", "Add to queue, {count} queued", { count }) : tr("加入佇列", "Add to queue"));
+    if (scheduledCount > 0) {
+      floating.setAttribute("aria-label", tr(
+        "加入佇列，目前一般佇列 {queue} 則、定時 {scheduled} 則",
+        "Add to queue, {queue} regular and {scheduled} scheduled",
+        { queue: queueCount, scheduled: scheduledCount },
+      ));
+    } else {
+      floating.setAttribute("aria-label", queueCount
+        ? tr("加入佇列，目前 {count} 則", "Add to queue, {count} queued", { count: queueCount })
+        : tr("加入佇列", "Add to queue"));
+    }
   }
 
   function ensurePreviewBar() {
@@ -1167,7 +1453,7 @@
               <div class="cqs-manager-title">${tr("佇列內容", "Queue contents")}</div>
               <div class="cqs-manager-badge" data-cqs-manager-count>0/10</div>
             </div>
-            <div class="cqs-manager-subtitle">${tr("加入後會自動接續送出；此處只負責編輯、刪除、排序。", "Queued messages send automatically; use this panel to edit, delete, and reorder them.")}</div>
+            <div class="cqs-manager-subtitle">${tr("一般佇列與單次定時發送都在這裡管理；定時項目會等到指定時間才送出。", "Manage regular queued messages and one-time scheduled sends here. Scheduled items wait until their specified time.")}</div>
           </div>
           <button type="button" class="cqs-manager-close" data-cqs-action="close-manager" aria-label="${tr("關閉", "Close")}">×</button>
         </div>
@@ -1203,13 +1489,22 @@
 
     list.textContent = "";
 
-    if (!state.queue.length) {
+    if (!state.queue.length && !state.scheduleItems.length) {
       const empty = document.createElement("div");
       empty.className = "cqs-empty-note";
-      empty.textContent = tr("還沒有佇列。先在 ChatGPT 輸入框打字，再按「+ 佇列」。", "The queue is empty. Type in the ChatGPT composer, then click Add to queue.");
+      empty.textContent = tr("還沒有佇列或定時訊息。短按加入一般佇列；長按「加入佇列」可設定單次定時發送。", "There are no queued or scheduled messages yet. Click to queue normally, or long-press Add to queue for a one-time scheduled send.");
       list.appendChild(empty);
       return;
     }
+
+    const makeActionButton = (label, action, disabled = false) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.cqsAction = action;
+      button.textContent = label;
+      button.disabled = disabled;
+      return button;
+    };
 
     state.queue.forEach((item, index) => {
       const card = document.createElement("article");
@@ -1234,16 +1529,6 @@
 
       const actions = document.createElement("div");
       actions.className = "cqs-item-actions";
-
-      const makeActionButton = (label, action, disabled = false) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.dataset.cqsAction = action;
-        button.textContent = label;
-        button.disabled = disabled;
-        return button;
-      };
-
       actions.appendChild(makeActionButton(tr("上移", "Move up"), "move-up", index === 0 || state.running));
       actions.appendChild(makeActionButton(tr("下移", "Move down"), "move-down", index === state.queue.length - 1 || state.running));
       actions.appendChild(makeActionButton(tr("複製", "Copy"), "copy-item"));
@@ -1255,12 +1540,58 @@
       card.appendChild(body);
       list.appendChild(card);
     });
+
+    state.scheduleItems.forEach((item) => {
+      const card = document.createElement("article");
+      card.className = "cqs-item-card cqs-item-scheduled";
+      card.dataset.cqsScheduleId = String(item.id || "");
+
+      const indexEl = document.createElement("div");
+      indexEl.className = "cqs-item-index cqs-item-schedule-index";
+      indexEl.textContent = "◷";
+      indexEl.setAttribute("aria-hidden", "true");
+
+      const body = document.createElement("div");
+      body.className = "cqs-item-body";
+
+      const meta = document.createElement("div");
+      meta.className = "cqs-item-schedule-meta";
+      const badge = document.createElement("span");
+      badge.className = "cqs-item-schedule-badge";
+      badge.textContent = item.status === "firing" ? tr("發送中", "Sending") : tr("定時", "Scheduled");
+      const time = document.createElement("strong");
+      time.textContent = formatScheduledDisplay(Number(item.scheduledAt));
+      meta.append(badge, time);
+
+      const textarea = document.createElement("textarea");
+      textarea.className = "cqs-item-textarea cqs-item-scheduled-text";
+      textarea.dataset.cqsScheduledText = "1";
+      textarea.value = String(item.text || "");
+      textarea.readOnly = true;
+      textarea.setAttribute("aria-label", tr("定時訊息，預定 {time}", "Scheduled message for {time}", {
+        time: formatScheduledDisplay(Number(item.scheduledAt)),
+      }));
+
+      const actions = document.createElement("div");
+      actions.className = "cqs-item-actions";
+      actions.appendChild(makeActionButton(tr("複製", "Copy"), "copy-scheduled-item"));
+      actions.appendChild(makeActionButton(
+        item.status === "firing" ? tr("發送中", "Sending") : tr("取消定時", "Cancel schedule"),
+        "cancel-scheduled-item",
+        item.status === "firing",
+      ));
+
+      body.append(meta, textarea, actions);
+      card.append(indexEl, body);
+      list.appendChild(card);
+    });
   }
 
   function openManager(focusFirst = false) {
     state.managerOpen = true;
     markManagerDirty();
     renderUi();
+    void refreshScheduledItems();
     if (focusFirst) {
       setTimeout(() => {
         const first = document.querySelector("#cqs-manager [data-cqs-item-text]");
@@ -1285,6 +1616,7 @@
   function renderUi() {
     const bar = ensurePreviewBar();
     const manager = ensureManager();
+    if (state.schedulePanelOpen) positionSchedulePanel();
 
     const count = bar.querySelector("[data-cqs-count]");
     const preview = bar.querySelector("[data-cqs-preview-text]");
@@ -1295,15 +1627,21 @@
     const managerCount = manager.querySelector("[data-cqs-manager-count]");
 
     const hasQueue = state.queue.length > 0;
-    bar.classList.toggle("cqs-empty", !hasQueue);
+    const hasScheduled = state.scheduleItems.length > 0;
+    const hasPending = hasQueue || hasScheduled;
+    bar.classList.toggle("cqs-empty", !hasPending);
     bar.classList.toggle("cqs-running", state.running);
-    bar.hidden = !hasQueue;
+    bar.hidden = !hasPending;
 
     const runTotal = getRunTotal();
     const runCurrent = getRunCurrentIndex();
     setTextIfChanged(count, state.running
       ? `${runCurrent}/${runTotal}`
-      : tr("佇列 {count}", "Queue {count}", { count: state.queue.length }));
+      : hasQueue && hasScheduled
+        ? tr("佇列 {queue} · 定時 {scheduled}", "Queue {queue} · Scheduled {scheduled}", { queue: state.queue.length, scheduled: state.scheduleItems.length })
+        : hasScheduled
+          ? tr("定時 {count}", "Scheduled {count}", { count: state.scheduleItems.length })
+          : tr("佇列 {count}", "Queue {count}", { count: state.queue.length }));
 
     if (state.running) {
       const statusText = getQueueStatusText(state.queue[0]?.status);
@@ -1318,6 +1656,16 @@
           ? tr("等待自動接續：{preview}", "Waiting to continue automatically: {preview}", { preview: shorten(state.queue[0]?.text || "") })
           : tr("已加入，會自動接續：{preview}", "Queued and will continue automatically: {preview}", { preview: shorten(state.queue[0]?.text || "") }));
       }
+    } else if (hasScheduled) {
+      const nextScheduled = state.scheduleItems[0];
+      setTextIfChanged(preview, tr(
+        "下一則定時 {time}：{preview}",
+        "Next scheduled {time}: {preview}",
+        {
+          time: formatScheduledDisplay(Number(nextScheduled?.scheduledAt || 0)),
+          preview: shorten(nextScheduled?.text || ""),
+        },
+      ));
     } else {
       setTextIfChanged(preview, state.lastError || tr("目前沒有佇列訊息", "The queue is empty"));
     }
@@ -1327,7 +1675,10 @@
       btn.hidden = !state.running;
     });
 
-    if (clearBtn) clearBtn.disabled = state.running && !hasQueue;
+    if (clearBtn) {
+      clearBtn.disabled = !hasQueue;
+      setTextIfChanged(clearBtn, hasScheduled ? tr("清空一般佇列", "Clear regular queue") : tr("清空", "Clear"));
+    }
     if (addCurrentBtn) addCurrentBtn.disabled = state.queue.length >= MAX_QUEUE;
     if (continueBtn) {
       continueBtn.hidden = state.running || !hasQueue || !state.pausedReason;
@@ -1336,8 +1687,14 @@
     }
     if (managerCount) {
       setTextIfChanged(managerCount, state.running
-        ? tr("{current}/{total} · 佇列 {count}/{max}", "{current}/{total} · Queue {count}/{max}", { current: getRunCurrentIndex(), total: getRunTotal(), count: state.queue.length, max: MAX_QUEUE })
-        : `${state.queue.length}/${MAX_QUEUE}`);
+        ? tr(
+          "{current}/{total} · 佇列 {count}/{max} · 定時 {scheduled}",
+          "{current}/{total} · Queue {count}/{max} · Scheduled {scheduled}",
+          { current: getRunCurrentIndex(), total: getRunTotal(), count: state.queue.length, max: MAX_QUEUE, scheduled: state.scheduleItems.length },
+        )
+        : state.scheduleItems.length
+          ? tr("佇列 {count}/{max} · 定時 {scheduled}", "Queue {count}/{max} · Scheduled {scheduled}", { count: state.queue.length, max: MAX_QUEUE, scheduled: state.scheduleItems.length })
+          : `${state.queue.length}/${MAX_QUEUE}`);
     }
 
     manager.hidden = !state.managerOpen;
@@ -1394,6 +1751,37 @@
 
     if (action === "add-current") {
       addCurrentComposerToQueue();
+      return;
+    }
+
+    if (action === "copy-scheduled-item") {
+      const id = String(actionEl.closest("[data-cqs-schedule-id]")?.dataset.cqsScheduleId || "");
+      const item = state.scheduleItems.find((candidate) => String(candidate.id || "") === id);
+      if (!item) return;
+      try {
+        await navigator.clipboard.writeText(String(item.text || ""));
+        showToast(tr("已複製這則定時訊息。", "The scheduled message was copied."));
+      } catch (_) {
+        showToast(tr("瀏覽器未允許複製，請手動選取文字。", "The browser did not allow copying. Select the text manually."));
+      }
+      return;
+    }
+
+    if (action === "cancel-scheduled-item") {
+      const id = String(actionEl.closest("[data-cqs-schedule-id]")?.dataset.cqsScheduleId || "");
+      if (!id) return;
+      actionEl.disabled = true;
+      const response = await sendExtensionMessage({
+        type: "CQS_SCHEDULE_CANCEL",
+        id,
+        scopeKey: state.scopeKey,
+      });
+      if (!response?.ok) {
+        showToast(scheduleReasonMessage(response?.reason));
+      } else {
+        showToast(tr("已取消這則定時發送。", "Scheduled send canceled."));
+      }
+      await refreshScheduledItems();
       return;
     }
 
@@ -1475,7 +1863,7 @@
   }
 
   function requestAutoRun() {
-    if (!state.queue.length || state.running || state.scopeSwitching) return;
+    if (!state.queue.length || state.running || state.scheduledSendActive || state.scopeSwitching) return;
     state.pausedReason = "";
     state.autoRunArmed = true;
     renderUi();
@@ -1805,6 +2193,76 @@
     throw new Error(tr("等待 ChatGPT 回覆完成逾時。你可以手動停止後再重試。", "Timed out waiting for the ChatGPT response to finish. Stop manually and retry."));
   }
 
+  async function sendScheduledText(payload) {
+    const text = String(payload?.text || "").trim();
+    const scopeKey = String(payload?.scopeKey || "").trim();
+    if (!text || !scopeKey) {
+      return { ok: false, message: tr("定時訊息內容或聊天室資訊不完整。", "The scheduled message or conversation information is incomplete.") };
+    }
+
+    const initialized = await waitFor(() => state.initialized, 10000, tr("訊息佇列尚未完成載入。", "The queue extension has not finished loading."), 100).catch(() => null);
+    if (!initialized) return { ok: false, message: tr("ChatGPT 分頁尚未完成載入。", "The ChatGPT tab has not finished loading.") };
+
+    await switchQueueScopeIfNeeded();
+    if (getScopeKeyForLocation() !== scopeKey || state.scopeKey !== scopeKey) {
+      return { ok: false, message: tr("目標分頁已切換到其他聊天室，為避免誤送已取消本次發送。", "The target tab switched to another conversation, so the scheduled send was canceled to prevent a mis-send.") };
+    }
+    if (state.running || state.scheduledSendActive) {
+      return { ok: false, message: tr("目標聊天室目前正在執行其他佇列或定時發送。", "The target conversation is already running another queue or scheduled send.") };
+    }
+
+    state.scheduledSendActive = true;
+    let leaseAcquired = false;
+    try {
+      await waitFor(() => getComposerInput(), 10000, tr("找不到 ChatGPT 輸入框。", "The ChatGPT composer could not be found."), 200);
+      await waitUntilReadyBeforeSend(15000);
+
+      if (state.running || getScopeKeyForLocation() !== scopeKey) {
+        return { ok: false, message: tr("聊天室狀態在發送前發生變化，為避免誤送已取消。", "The conversation state changed before sending, so the scheduled send was canceled.") };
+      }
+
+      const existingDraft = normalizeText(getComposerText());
+      if (existingDraft) {
+        return { ok: false, message: tr("輸入框已有未送出的文字，為避免覆蓋，本次定時發送失敗。", "There is already unsent text in the composer. The scheduled send failed to avoid overwriting it.") };
+      }
+
+      const lease = await acquireQueueLease(scopeKey);
+      if (!lease.ok) {
+        return { ok: false, message: tr("同一聊天室正在另一個分頁執行佇列，為避免重複或衝突，本次定時發送失敗。", "The same conversation is running a queue in another tab. The scheduled send failed to avoid duplicates or conflicts.") };
+      }
+      leaseAcquired = true;
+
+      const input = setComposerText(text);
+      await wait(450);
+      if (getScopeKeyForLocation() !== scopeKey || state.running) {
+        clearComposerIfMatches(text);
+        return { ok: false, message: tr("發送前聊天室或佇列狀態已改變，本次定時發送取消。", "The conversation or queue state changed before submission, so the scheduled send was canceled.") };
+      }
+
+      const snapshot = makeSubmissionSnapshot();
+      const send = await waitFor(
+        () => getSendButton(true),
+        10000,
+        tr("送出按鈕沒有變成可點擊狀態。", "The send button did not become available."),
+        250,
+      );
+      send.click();
+      await waitForSubmissionConfirmed(snapshot, text, input);
+      return { ok: true, submittedAt: Date.now() };
+    } catch (error) {
+      clearComposerIfMatches(text);
+      return {
+        ok: false,
+        message: error?.message || tr("定時訊息沒有成功送出。", "The scheduled message was not sent."),
+      };
+    } finally {
+      if (leaseAcquired) await releaseQueueLease(scopeKey);
+      state.scheduledSendActive = false;
+      if (state.queue.length && !state.pausedReason && !state.running) setTimeout(requestAutoRun, 250);
+      renderUi();
+    }
+  }
+
   async function sendOne(item) {
     if (item.status === "awaiting-response" && item.submission) {
       item.status = "awaiting-response";
@@ -1856,7 +2314,7 @@
   }
 
   async function startQueue() {
-    if (state.running || state.queue.length === 0 || state.scopeSwitching) return;
+    if (state.running || state.scheduledSendActive || state.queue.length === 0 || state.scopeSwitching) return;
 
     const runScope = state.scopeKey;
     if (!runScope || getScopeKeyForLocation() !== runScope) {
@@ -2015,8 +2473,26 @@
       scheduled = false;
       ensureQueueButton();
       placePreviewBar();
+      if (state.schedulePanelOpen) positionSchedulePanel();
       renderUi();
     }, 250);
+  }
+
+  function registerContentRuntimeMessages() {
+    const runtime = (firefoxApi || chromeApi)?.runtime;
+    if (!runtime?.onMessage?.addListener) return;
+    runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (!message || message.type !== "CQS_SCHEDULE_FIRE") return undefined;
+      const task = sendScheduledText(message).finally(() => {
+        setTimeout(() => { void refreshScheduledItems(); }, 250);
+      });
+      if (firefoxApi) return task;
+      task.then(sendResponse, (error) => sendResponse({
+        ok: false,
+        message: error?.message || tr("定時發送失敗。", "Scheduled send failed."),
+      }));
+      return true;
+    });
   }
 
   async function init() {
@@ -2034,6 +2510,7 @@
     state.initialized = true;
 
     scheduleUiRefresh();
+    void refreshScheduledItems();
     if (state.queue.length && !state.pausedReason) {
       setTimeout(requestAutoRun, 650);
     }
@@ -2042,6 +2519,10 @@
 
     const handleStorageChange = (changes, areaName) => {
       if (areaName !== "local") return;
+
+      if (changes?.[SCHEDULE_STORAGE_KEY]) {
+        void refreshScheduledItems();
+      }
 
       if (changes?.[NOTIFICATION_SETTINGS_KEY]) {
         state.notificationSettings = {
@@ -2065,6 +2546,11 @@
 
     document.addEventListener("pointerdown", prepareCompletionAudio, { passive: true });
     document.addEventListener("keydown", prepareCompletionAudio, { passive: true });
+    document.addEventListener("cqs:direct-download-status", (event) => {
+      const message = String(event?.detail?.message || "").trim();
+      if (!message) return;
+      showToast(message, { duration: event?.detail?.kind === "error" ? 5200 : 2600 });
+    });
 
     const observer = new MutationObserver((mutations) => {
       if (mutations.some((mutation) => !isCqsUi(mutation.target))) scheduleUiRefresh();
@@ -2121,5 +2607,6 @@
     },
   });
 
+  registerContentRuntimeMessages();
   init();
 })();

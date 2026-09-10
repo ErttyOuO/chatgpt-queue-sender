@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.8.9
+
+- Added a compact direct-download button immediately beside ChatGPT assistant file-citation links such as generated ZIP, XPI, source, document, and other downloadable files.
+- The original ChatGPT filename button is left unchanged and can still open the normal preview; only the new adjacent button bypasses preview and starts a download.
+- Reads ChatGPT's `data-file-citation-primary-file-id` metadata, with a single-file citation-group fallback, instead of scraping the displayed filename as the download identity.
+- Resolves fresh ChatGPT attachment authorization before download and retries once through the file-ID resolver if a signed URL becomes stale.
+- Uses Firefox `downloads.download()` with `saveAs: false` and `conflictAction: "uniquify"`, so the selected file is sent directly to Firefox's download manager without the preview menu flow.
+- Direct-download UI is injected only into assistant file citations, reappears after React rerenders, and is excluded from Markdown and ZIP attachment scanning.
+- Added download-button loading/success/error states and a local ChatGPT-style toast for direct-download results.
+- Added the `downloads` permission; it is used only when the user explicitly clicks the injected direct-download control.
+- Added pure Node regression coverage for assistant-only injection, exact file-ID extraction, adjacent placement, safe filenames, stale signed-URL refresh, and non-ChatGPT sender rejection.
+
+## 0.8.8
+
+- Unified scheduled-send management with the existing right-bottom queue manager.
+- The long-press scheduling panel now only chooses message/time; after scheduling it closes and opens the normal queue manager.
+- Scheduled items use the same queue card layout with a `Scheduled` badge and target send time.
+- Scheduled cards support Copy and Cancel schedule actions while remaining isolated from normal queue ordering/auto-run behavior.
+- The floating queue badge and preview bar now include scheduled-message counts, and a schedule-only conversation still exposes the same manager entry point.
+- Schedule storage changes and conversation-scope switches refresh the unified manager automatically.
+- The queue manager's Clear action explicitly clears only the regular queue when scheduled items exist, avoiding accidental schedule cancellation.
+
+## 0.8.7
+
+- Added one-time scheduled sends. Long-press the Add to queue button to open a compact date/time scheduling panel.
+- Scheduled messages are stored locally and triggered by Firefox `browser.alarms` using an absolute `when` timestamp; no recurring `periodInMinutes` schedule is used.
+- Scheduled sends are bound to the current ChatGPT conversation (or draft tab before a conversation ID exists) and migrate from draft scope to the real conversation scope when ChatGPT creates the conversation.
+- Background alarms can trigger a bound ChatGPT tab even when that tab is inactive or the Firefox window is minimized.
+- Added independent schedule notifications for trigger, success, and failure.
+- Scheduled sends fail closed when the target tab/conversation is unavailable, ChatGPT is already busy, another queue runner owns the conversation, or the composer contains a manual draft.
+- Future schedules are restored from local storage when the MV3 background restarts. Tasks missed by more than two minutes are not sent late.
+- Added cancellation and per-conversation scheduled-item listing in the long-press panel.
+- Added the required `alarms` and `notifications` permissions. Ordinary response-completion notifications remain user-configurable in the popup.
+- Added `tests/schedule-background-simulation.mjs` for one-shot alarms, background-tab dispatch, success/failure notifications, cancellation, draft-scope migration, and wrong-conversation blocking.
+
 ## 0.8.6
 
 - Prevent queue auto-send while the latest assistant turn still shows active tool/work indicators, even when ChatGPT has already restored the normal Send button.

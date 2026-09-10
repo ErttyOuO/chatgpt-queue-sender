@@ -182,6 +182,53 @@ npm run verify
 
 `npm run verify` runs syntax/static checks, queue/background/archive simulations, the jsdom UI suites, and Mozilla `addons-linter` against a staged directory containing runtime extension files only. The same commands are included in `.github/workflows/validate.yml`.
 
+## v0.8.9 direct file download regression
+
+1. Open a ChatGPT assistant reply containing a generated file citation with `data-file-citation-primary-file-id`.
+2. Confirm the original filename button still opens ChatGPT's normal preview.
+3. Confirm a compact download icon appears immediately to the right of the filename.
+4. Click only the new icon and confirm Firefox begins downloading without first opening the file preview or its three-dot menu.
+5. Confirm duplicate filenames use Firefox's unique-name behavior rather than overwriting an existing file.
+6. Generate a new file while the conversation is open and confirm the download icon appears after React inserts the new citation.
+7. Cause a React rerender around an existing citation and confirm the injected download control can be restored if removed.
+8. Confirm user-side upload citations do not receive the assistant direct-download control.
+9. Confirm Markdown export contains the original file citation text but not the injected direct-download control label/icon.
+10. Confirm ZIP attachment scanning does not create a duplicate candidate from the injected direct-download button.
+11. If a previously resolved signed URL has expired, confirm the background retries file-ID metadata resolution once.
+12. Run `npm run test:direct-download`, `npm run check`, and `npm run test:pure`.
+
+## v0.8.8 unified queue/schedule manager regression
+
+1. Type a message and long-press the queue button.
+2. Confirm the scheduling panel contains only message/time controls and does **not** contain a separate scheduled-message list.
+3. Create a one-time schedule. Confirm the scheduling panel closes automatically.
+4. Confirm the normal right-bottom queue manager opens automatically.
+5. Confirm the scheduled message appears in the same manager list/card area as ordinary queued messages, with a `Scheduled`/`定時` badge and target send time.
+6. Add a normal queued message and confirm both normal and scheduled cards remain visible in the same manager.
+7. Confirm scheduled cards cannot be moved up/down as ordinary sequential queue entries.
+8. Confirm Copy copies the scheduled text and Cancel schedule removes only that scheduled item/alarm.
+9. When scheduled items exist, confirm the manager Clear button explicitly clears only the regular queue and does not cancel schedules.
+10. With no ordinary queue but at least one scheduled item, confirm the preview bar and queue-button badge still expose the manager and show the scheduled count.
+
+## v0.8.7 one-time scheduled-send regression
+
+1. Type a message in the ChatGPT composer and long-press the Add to queue button. Confirm the normal short-click queue action does not fire and a compact Scheduled send panel opens.
+2. Confirm the panel contains an editable message field, `datetime-local` input, local time-zone label, single-use wording, Create/Cancel actions, and a list of scheduled items for the current conversation.
+3. Schedule a message at least one minute in the future. Confirm the original composer is cleared only when it still contains the same text that was scheduled.
+4. Confirm `cqs_scheduled_messages_v1` in `storage.local` contains the text, absolute `scheduledAt`, target scope, target tab, and time-zone label.
+5. Confirm Firefox creates exactly one alarm named with the `cqs-schedule:` prefix and an absolute `when` timestamp. Confirm there is no `periodInMinutes`.
+6. Switch to another browser tab or minimize the Firefox window while leaving the target ChatGPT conversation open. At the scheduled time, confirm the message is submitted to the bound conversation without activating the tab.
+7. Confirm a “scheduled send triggered” notification appears, followed by either a success or failure notification.
+8. Leave unsent manual text in the target composer before the scheduled time. Confirm the scheduled task fails and does not overwrite the manual draft.
+9. Start a normal queue or leave ChatGPT actively generating when the scheduled time arrives. Confirm the scheduled task fails rather than interrupting the active work.
+10. Navigate the target tab to a different ChatGPT conversation before the scheduled time. Confirm the message is not sent to the wrong conversation.
+11. Create a scheduled task from a new/draft chat, then send another message manually so ChatGPT creates a real conversation ID. Confirm the scheduled task migrates from `draft-tab:<id>` to `conversation:<id>`.
+12. Cancel a scheduled task from the long-press panel. Confirm both the stored item and Firefox alarm are removed.
+13. Restart the MV3 background script before a future scheduled time. Confirm future alarms are recreated from local storage without duplicating the task.
+14. Simulate a task whose scheduled time was missed by more than two minutes. Confirm it is removed and reported as failed instead of being sent late.
+15. Close Firefox completely through the scheduled time. Confirm no send can occur while Firefox is closed. On later startup, verify the two-minute late-send guard is applied.
+16. Run `npm run test:schedule`; confirm one-shot alarm creation, background-tab dispatch, trigger/success/failure notifications, cancellation, draft migration, and wrong-conversation blocking all pass.
+
 ## v0.8.6 queue busy-state and image-upload regression
 
 1. Start a ChatGPT coding/tool task that shows an animated Working/Thinking/Running-style status. If the native Stop button disappears and Send returns before the tool work is actually finished, confirm the next queued message is **not** sent.

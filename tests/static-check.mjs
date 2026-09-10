@@ -16,6 +16,7 @@ const files = {
   'archive-export.js': fs.readFileSync(path.join(root, 'export', 'archive-export.js'), 'utf8'),
   'handoff-prompt.js': fs.readFileSync(path.join(root, 'export', 'handoff-prompt.js'), 'utf8'),
   'custom-prompts.js': fs.readFileSync(path.join(root, 'export', 'custom-prompts.js'), 'utf8'),
+  'direct-download.js': fs.readFileSync(path.join(root, 'export', 'direct-download.js'), 'utf8'),
 };
 
 const failures = [];
@@ -24,13 +25,16 @@ const assert = (condition, message) => {
 };
 
 assert(manifest.manifest_version === 3, 'manifest_version must be 3');
-assert(manifest.version === '0.8.6', 'manifest version must be 0.8.6');
+assert(manifest.version === '0.8.9', 'manifest version must be 0.8.9');
 assert(manifest.default_locale === 'en', 'default locale must be English for non-Chinese Firefox locales');
 assert(manifest.name === '__MSG_extensionName__', 'manifest name must use locale messages');
 assert(manifest.description === '__MSG_extensionDescription__', 'manifest description must use locale messages');
 assert(manifest.action?.default_title === '__MSG_extensionActionTitle__', 'toolbar title must use locale messages');
-assert(manifest.permissions?.length === 1 && manifest.permissions[0] === 'storage', 'storage must remain the only required permission');
-assert(manifest.optional_permissions?.includes('notifications'), 'notifications must be an optional permission');
+assert(manifest.permissions?.includes('storage'), 'storage permission is required');
+assert(manifest.permissions?.includes('alarms'), 'alarms permission is required for one-shot scheduled sends');
+assert(manifest.permissions?.includes('notifications'), 'notifications permission is required for scheduled-send result alerts');
+assert(manifest.permissions?.includes('downloads'), 'downloads permission is required for one-click direct file downloads');
+assert(!manifest.optional_permissions?.includes?.('notifications'), 'notifications should no longer remain optional in v0.8.7');
 assert(manifest.action?.default_popup === 'popup/popup.html', 'toolbar popup is missing');
 assert(JSON.stringify(manifest.background?.scripts) === JSON.stringify(['i18n.js', 'background.js']), 'localized background script order is incorrect');
 assert(manifest.icons?.['128'] === 'icons/icon-128.png', 'extension icon mapping is missing');
@@ -53,7 +57,7 @@ for (const file of [
   'i18n.js', '_locales/en/messages.json', '_locales/zh_TW/messages.json', '_locales/zh_CN/messages.json',
   'popup/popup.html', 'popup/popup.css', 'popup/popup.js', 'background.js',
   'export/markdown-converter.js', 'export/zip-writer.js', 'export/conversation-export.js', 'export/conversation-api.js', 'export/archive-export.js',
-  'export/handoff-prompt.js', 'export/custom-prompts.js', 'export/export-ui.css',
+  'export/handoff-prompt.js', 'export/custom-prompts.js', 'export/direct-download.js', 'export/export-ui.css',
 ]) {
   assert(fs.existsSync(path.join(root, file)), `missing packaged file: ${file}`);
 }
@@ -68,6 +72,7 @@ const expectedOrder = [
   'export/archive-export.js',
   'export/handoff-prompt.js',
   'export/custom-prompts.js',
+  'export/direct-download.js',
   'content.js',
 ];
 assert(JSON.stringify(contentEntry?.js) === JSON.stringify(expectedOrder), 'content script load order is incorrect');
@@ -97,6 +102,7 @@ const archiveJs = files['archive-export.js'];
 const zipJs = files['zip-writer.js'];
 const handoffJs = files['handoff-prompt.js'];
 const customPromptsJs = files['custom-prompts.js'];
+const directDownloadJs = files['direct-download.js'];
 const backgroundJs = files['background.js'];
 const popupJs = files['popup.js'];
 const exportCss = fs.readFileSync(path.join(root, 'export', 'export-ui.css'), 'utf8');
@@ -129,6 +135,23 @@ assert(backgroundJs.includes('senderTabId'), 'sender tab identity handling is mi
 assert(backgroundJs.includes('storage?.session'), 'persistent session-backed queue leases are missing');
 assert(backgroundJs.includes('cqs_queue_sender_session_leases_v1'), 'persistent lease storage key is missing');
 assert(!backgroundJs.includes('const queueLeases = new Map()'), 'queue leases must not remain memory-only');
+assert(backgroundJs.includes('cqs_scheduled_messages_v1'), 'scheduled-message storage is missing');
+assert(backgroundJs.includes('SCHEDULE_ALARM_PREFIX'), 'scheduled alarm namespace is missing');
+assert(backgroundJs.includes('api.alarms.create') && backgroundJs.includes('{ when: scheduledAt }'), 'absolute one-shot Firefox alarm creation is missing');
+assert(backgroundJs.includes('api.alarms?.onAlarm?.addListener'), 'scheduled alarm listener is missing');
+assert(backgroundJs.includes('api.tabs.sendMessage'), 'background-to-ChatGPT scheduled send dispatch is missing');
+assert(backgroundJs.includes('SCHEDULE_LATE_GRACE_MS'), 'late scheduled-send guard is missing');
+assert(backgroundJs.includes('CQS_SCHEDULE_CREATE'), 'scheduled send create message is missing');
+assert(backgroundJs.includes('CQS_SCHEDULE_CANCEL'), 'scheduled send cancellation is missing');
+assert(backgroundJs.includes('CQS_SCHEDULE_SCOPE_TRANSFER'), 'draft-to-conversation schedule migration is missing');
+assert(backgroundJs.includes('createScheduleNotification("success"'), 'scheduled success notification path is missing');
+assert(contentJs.includes('SCHEDULE_LONG_PRESS_MS'), 'long-press scheduled-send trigger is missing');
+assert(contentJs.includes('datetime-local'), 'scheduled date/time input is missing');
+assert(contentJs.includes('CQS_SCHEDULE_CREATE'), 'content-side scheduled send creation is missing');
+assert(contentJs.includes('CQS_SCHEDULE_FIRE'), 'content-side scheduled alarm receiver is missing');
+assert(contentJs.includes('scheduledSendActive'), 'scheduled/queue concurrency guard is missing');
+assert(contentJs.includes('輸入框已有未送出的文字') && contentJs.includes('unsent text in the composer'), 'scheduled send draft-overwrite protection is missing');
+assert(contentJs.includes('長按') && contentJs.includes('long-press'), 'long-press UI guidance is missing');
 assert(backgroundJs.includes('globalThis.CQS_I18N?.isEnglish ? "en-US" : "zh-TW"'), 'localized Oai-Language header is missing');
 assert(apiJs.includes('globalThis.CQS_I18N?.isChinese ? "zh-TW" : "en-US"'), 'page attachment Oai-Language rule is missing');
 assert(exportJs.includes('collectConversation'), 'full conversation collection logic is missing');
@@ -187,7 +210,27 @@ assert(customPromptsJs.includes('navigator.clipboard'), 'saved prompt copy actio
 assert(customPromptsJs.includes('MAX_PROMPTS = 30'), 'saved prompt item limit is missing');
 assert(backgroundJs.includes('notifications.create'), 'system notification creation is missing');
 assert(backgroundJs.includes('notifications.onClicked.addListener'), 'notification click handling is missing');
-assert(popupJs.includes('permissions.request'), 'optional notification permission request is missing');
+assert(popupJs.includes('ensureNotificationPermission'), 'notification permission compatibility handling is missing');
+assert(directDownloadJs.includes('data-file-citation-primary-file-id'), 'assistant file-citation direct-download selector is missing');
+assert(directDownloadJs.includes('CQS_DIRECT_DOWNLOAD'), 'direct-download background message dispatch is missing');
+assert(directDownloadJs.includes('getDownloadContext'), 'direct-download auth/session context is missing');
+assert(directDownloadJs.includes('resolveAttachment'), 'direct-download fresh file resolution is missing');
+assert(directDownloadJs.includes('data-cqs-direct-download'), 'direct-download injected button marker is missing');
+assert(backgroundJs.includes('CQS_DIRECT_DOWNLOAD'), 'background direct-download handler is missing');
+assert(backgroundJs.includes('api.downloads.download'), 'Firefox downloads API integration is missing');
+assert(backgroundJs.includes('conflictAction: "uniquify"'), 'direct downloads must avoid overwriting existing files');
+assert(backgroundJs.includes('saveAs: false'), 'direct downloads must not open the preview/save-as flow');
+assert(backgroundJs.includes('safeDirectDownloadFilename'), 'direct-download filename sanitization is missing');
+assert(apiJs.includes('getDownloadContext'), 'conversation API download context helper is missing');
+assert(files['markdown-converter.js'].includes('.cqs-direct-download-button'), 'direct-download button must be excluded from Markdown export');
+assert(exportJs.includes('[data-cqs-direct-download]'), 'direct-download UI must be excluded from attachment export scanning');
+assert(contentJs.includes('cqs:direct-download-status'), 'direct-download toast bridge is missing');
+
+assert(contentJs.includes('cqs-item-scheduled'), 'scheduled messages must render in the normal queue manager');
+assert(contentJs.includes('copy-scheduled-item'), 'scheduled-message copy action is missing from the queue manager');
+assert(contentJs.includes('cancel-scheduled-item'), 'scheduled-message cancel action is missing from the queue manager');
+assert(contentJs.includes('After scheduling, the message appears in the normal queue manager'), 'schedule panel should explain unified queue-manager placement');
+assert(!contentJs.includes('data-cqs-schedule-list'), 'scheduled messages should not keep a separate list inside the scheduling panel');
 
 if (failures.length) {
   console.error('Static checks failed:');

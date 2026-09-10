@@ -61,8 +61,7 @@
 
   async function ensureNotificationPermission() {
     try {
-      if (await api.permissions.contains({ permissions: ["notifications"] })) return true;
-      return await api.permissions.request({ permissions: ["notifications"] });
+      return await api.permissions.contains({ permissions: ["notifications"] });
     } catch (_) {
       return false;
     }

@@ -685,7 +685,7 @@
     }
 
     for (const element of candidates) {
-      if (!isRendered(element) || element.closest("pre, code, #cqs-export-control, #cqs-export-modal")) continue;
+      if (!isRendered(element) || element.matches?.("[data-cqs-direct-download]") || element.closest("pre, code, #cqs-export-control, #cqs-export-modal, [data-cqs-direct-download]")) continue;
       const urls = getElementUrls(element);
       const directFileId = getElementFileId(element, urls);
       const inAttachmentCard = hasAttachmentContext(element);
@@ -995,7 +995,7 @@
       tr("- 匯出範圍：目前顯示的對話分支", "- Export scope: currently displayed conversation branch"),
       tr("- 完整性：{status}", "- Completeness: {status}", { status: complete ? tr("已完成自動載入與掃描", "automatic loading and scanning completed") : tr("僅能確認已掃描到的內容，較早或尚未載入的訊息可能缺漏", "only scanned content could be confirmed; earlier or unloaded messages may be missing") }),
       tr("- 訊息數量：{count}", "- Message count: {count}", { count: turns.length }),
-      tr("- 匯出工具：ChatGPT Queue Sender v0.8.6", "- Exported by: ChatGPT Queue Sender v0.8.6"),
+      tr("- 匯出工具：ChatGPT Queue Sender v0.8.9", "- Exported by: ChatGPT Queue Sender v0.8.9"),
       "",
       "---",
       "",

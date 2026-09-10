@@ -17,6 +17,7 @@
     "#cqs-toast",
     "#cqs-floating-button",
     ".cqs-copy-handoff-button",
+    ".cqs-direct-download-button",
   ].join(",");
 
   function cleanText(value) {

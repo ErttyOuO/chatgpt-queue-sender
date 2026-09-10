@@ -23,7 +23,7 @@ npm run verify
 Run from inside this folder:
 
 ```bash
-zip -X -r ../chatgpt-queue-sender-firefox-v0.8.6-amo.xpi \
+zip -X -r ../chatgpt-queue-sender-firefox-v0.8.9-amo.xpi \
   manifest.json i18n.js background.js content.js content.css \
   _locales export popup icons
 ```
@@ -35,25 +35,23 @@ The XPI archive root must directly contain `manifest.json`; do not zip the paren
 Run from the parent folder after deleting `node_modules`:
 
 ```bash
-zip -X -r chatgpt-queue-sender-firefox-v0.8.6-source.zip \
-  chatgpt-queue-sender-firefox-v0.8.6-source
+zip -X -r chatgpt-queue-sender-firefox-v0.8.9-source.zip \
+  chatgpt-queue-sender-firefox-v0.8.9-source
 ```
 
 ## Permission design
 
-Required permission:
+Required permissions:
 
 ```json
-"permissions": ["storage"]
+"permissions": ["storage", "alarms", "notifications"]
 ```
 
-Optional permission requested from the popup only when enabled:
+- `storage` persists conversation-scoped queues, reusable prompts, and one-time scheduled tasks.
+- `alarms` creates absolute one-shot wakeups for scheduled sends.
+- `notifications` reports scheduled-send trigger/success/failure. Ordinary response-completion notifications remain user-configurable in the popup.
 
-```json
-"optional_permissions": ["notifications"]
-```
-
-Markdown and ZIP downloads use local `Blob` objects and temporary links, so v0.8.6 does not require the Firefox `downloads` permission. HTTPS attachments are fetched by `background.js`, because Manifest V3 content scripts cannot rely on host permissions for cross-origin fetches. The background script accepts only ChatGPT/OpenAI/oaiusercontent HTTPS hosts, streams the bytes to the content script, and the built-in ZIP writer packages them locally.
+Markdown and ZIP archive generation still use local `Blob` objects and the existing background attachment channel. v0.8.9 additionally requests Firefox `downloads` permission for the user-clicked direct-download button shown beside ChatGPT-provided file citations. The background script first resolves an allowed ChatGPT/OpenAI/oaiusercontent URL, then passes only that selected file to Firefox `downloads.download()`.
 
 Required host permissions cover the two supported ChatGPT pages plus OpenAI-controlled attachment hosts:
 

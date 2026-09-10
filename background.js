@@ -23,6 +23,12 @@
   let leaseMutationChain = Promise.resolve();
   let legacyMigrationChain = Promise.resolve();
 
+  const SCHEDULE_STORAGE_KEY = "cqs_scheduled_messages_v1";
+  const SCHEDULE_ALARM_PREFIX = "cqs-schedule:";
+  const SCHEDULE_LATE_GRACE_MS = 2 * 60 * 1000;
+  const SCHEDULE_MAX_AHEAD_MS = 366 * 24 * 60 * 60 * 1000;
+  let scheduleMutationChain = Promise.resolve();
+
   function makeToken() {
     try { return globalThis.crypto?.randomUUID?.() || `lease-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
     catch (_) { return `lease-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
@@ -277,6 +283,362 @@
   }
 
 
+  function withScheduleMutation(operation) {
+    const run = scheduleMutationChain
+      .catch(() => undefined)
+      .then(operation);
+    scheduleMutationChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  function scheduleAlarmName(id) {
+    return `${SCHEDULE_ALARM_PREFIX}${String(id || "")}`;
+  }
+
+  function normalizeScheduleItem(value) {
+    if (!value || typeof value !== "object") return null;
+    const id = String(value.id || "").trim();
+    const text = String(value.text || "").trim();
+    const scopeKey = String(value.scopeKey || "").trim();
+    const scheduledAt = Number(value.scheduledAt || 0);
+    const createdAt = Number(value.createdAt || 0);
+    const tabId = Number(value.tabId);
+    const status = value.status === "firing" ? "firing" : "scheduled";
+    if (!id || !text || !scopeKey || !Number.isFinite(scheduledAt) || scheduledAt <= 0 || !Number.isInteger(tabId) || tabId < 0) return null;
+    return {
+      id,
+      text: text.slice(0, 120000),
+      scopeKey,
+      conversationId: String(value.conversationId || "").trim(),
+      scheduledAt,
+      createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now(),
+      tabId,
+      url: String(value.url || "").slice(0, 2048),
+      title: String(value.title || "").slice(0, 180),
+      timeZone: String(value.timeZone || "").slice(0, 120),
+      status,
+      firingAt: Number(value.firingAt || 0),
+    };
+  }
+
+  async function readScheduledItems() {
+    const raw = await storageGet(SCHEDULE_STORAGE_KEY);
+    const source = Array.isArray(raw?.items) ? raw.items : [];
+    const items = source.map(normalizeScheduleItem).filter(Boolean);
+    return { items, changed: items.length !== source.length };
+  }
+
+  async function writeScheduledItems(items) {
+    await api.storage.local.set({
+      [SCHEDULE_STORAGE_KEY]: {
+        version: 1,
+        updatedAt: Date.now(),
+        items,
+      },
+    });
+  }
+
+  function conversationIdFromUrl(value) {
+    try {
+      const url = new URL(String(value || ""));
+      const match = url.pathname.match(/(?:^|\/)c\/([A-Za-z0-9_-]{8,})(?:\/|$)/);
+      return match?.[1] || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function isChatGptPageUrl(value) {
+    try {
+      const url = new URL(String(value || ""));
+      const host = url.hostname.toLowerCase();
+      return url.protocol === "https:" && (host === "chatgpt.com" || host === "chat.openai.com");
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function scheduleMatchesTab(item, tab) {
+    if (!item || !tab || !Number.isInteger(tab.id) || !isChatGptPageUrl(tab.url)) return false;
+    if (item.scopeKey.startsWith("conversation:")) {
+      return conversationIdFromUrl(tab.url) === String(item.conversationId || item.scopeKey.slice("conversation:".length));
+    }
+    if (item.scopeKey.startsWith("draft-tab:")) {
+      return tab.id === item.tabId && !conversationIdFromUrl(tab.url);
+    }
+    return false;
+  }
+
+  function schedulePreview(text, max = 90) {
+    const value = String(text || "").replace(/\s+/g, " ").trim();
+    return value.length <= max ? value : `${value.slice(0, Math.max(1, max - 1))}…`;
+  }
+
+  function scheduleNotificationId(kind, tabId) {
+    return `cqs-schedule-${kind}-${Number.isInteger(tabId) ? tabId : -1}-${Date.now()}`;
+  }
+
+  async function createScheduleNotification(kind, item, tabId, detail = "") {
+    if (!api.notifications?.create) return { shown: false, reason: "unavailable" };
+    const preview = schedulePreview(item?.text);
+    const title = kind === "success"
+      ? tr("定時訊息已送出", "Scheduled message sent")
+      : kind === "failed"
+        ? tr("定時訊息發送失敗", "Scheduled message failed")
+        : tr("定時發送已觸發", "Scheduled send triggered");
+    const message = kind === "success"
+      ? tr("已成功送出：{preview}", "Sent successfully: {preview}", { preview })
+      : kind === "failed"
+        ? tr("未能送出：{reason}", "Could not send: {reason}", { reason: String(detail || tr("未知原因", "Unknown reason")).slice(0, 180) })
+        : tr("時間已到，正在嘗試送出：{preview}", "The scheduled time has arrived. Sending: {preview}", { preview });
+    const id = scheduleNotificationId(kind, tabId);
+    try {
+      await api.notifications.create(id, {
+        type: "basic",
+        iconUrl: api.runtime.getURL("icons/icon-128.png"),
+        title,
+        message: String(message).slice(0, 240),
+      });
+      return { shown: true, id };
+    } catch (error) {
+      console.error("[CQS] scheduled notification failed", error);
+      return { shown: false, reason: "error" };
+    }
+  }
+
+  async function createScheduledMessage(message, sender) {
+    if (!api.alarms?.create) return { ok: false, reason: "alarms-unavailable" };
+    const tabId = senderTabId(sender);
+    const text = String(message?.text || "").trim();
+    const scopeKey = String(message?.scopeKey || "").trim();
+    const scheduledAt = Number(message?.scheduledAt || 0);
+    const now = Date.now();
+    if (tabId < 0 || !text || !scopeKey) return { ok: false, reason: "invalid-context" };
+    if (!Number.isFinite(scheduledAt) || scheduledAt < now + 5000) return { ok: false, reason: "time-too-soon" };
+    if (scheduledAt > now + SCHEDULE_MAX_AHEAD_MS) return { ok: false, reason: "time-too-far" };
+    if (scopeKey.startsWith("draft-tab:") && scopeKey !== `draft-tab:${tabId}`) return { ok: false, reason: "scope-mismatch" };
+
+    const conversationId = scopeKey.startsWith("conversation:")
+      ? scopeKey.slice("conversation:".length)
+      : "";
+    const id = makeToken();
+    const item = normalizeScheduleItem({
+      id,
+      text,
+      scopeKey,
+      conversationId,
+      scheduledAt,
+      createdAt: now,
+      tabId,
+      url: String(sender?.tab?.url || message?.url || ""),
+      title: String(sender?.tab?.title || ""),
+      timeZone: String(message?.timeZone || ""),
+      status: "scheduled",
+    });
+    if (!item) return { ok: false, reason: "invalid-item" };
+
+    return withScheduleMutation(async () => {
+      const { items } = await readScheduledItems();
+      items.push(item);
+      await writeScheduledItems(items);
+      try {
+        await api.alarms.create(scheduleAlarmName(id), { when: scheduledAt });
+      } catch (error) {
+        await writeScheduledItems(items.filter((entry) => entry.id !== id));
+        console.error("[CQS] failed to create scheduled alarm", error);
+        return { ok: false, reason: "alarm-create-failed" };
+      }
+      return { ok: true, item };
+    });
+  }
+
+  async function listScheduledMessages(message, sender) {
+    const requestedScope = String(message?.scopeKey || "").trim();
+    const tabId = senderTabId(sender);
+    const { items } = await readScheduledItems();
+    return {
+      ok: true,
+      items: items
+        .filter((item) => !requestedScope || item.scopeKey === requestedScope)
+        .filter((item) => item.status === "scheduled" || (item.status === "firing" && item.tabId === tabId))
+        .sort((a, b) => a.scheduledAt - b.scheduledAt),
+    };
+  }
+
+  async function cancelScheduledMessage(message) {
+    const id = String(message?.id || "").trim();
+    const requestedScope = String(message?.scopeKey || "").trim();
+    if (!id) return { ok: false, reason: "invalid-id" };
+    return withScheduleMutation(async () => {
+      const { items } = await readScheduledItems();
+      const item = items.find((entry) => entry.id === id);
+      if (!item) return { ok: false, reason: "not-found" };
+      if (requestedScope && item.scopeKey !== requestedScope) return { ok: false, reason: "scope-mismatch" };
+      if (item.status === "firing") return { ok: false, reason: "already-firing" };
+      try { await api.alarms?.clear?.(scheduleAlarmName(id)); } catch (_) {}
+      await writeScheduledItems(items.filter((entry) => entry.id !== id));
+      return { ok: true };
+    });
+  }
+
+  async function transferScheduledScope(message, sender) {
+    const fromScopeKey = String(message?.fromScopeKey || "").trim();
+    const toScopeKey = String(message?.toScopeKey || "").trim();
+    const tabId = senderTabId(sender);
+    if (!fromScopeKey || !toScopeKey || tabId < 0) return { ok: false, reason: "invalid-context" };
+    return withScheduleMutation(async () => {
+      const { items } = await readScheduledItems();
+      let changed = false;
+      for (const item of items) {
+        if (item.tabId !== tabId || item.scopeKey !== fromScopeKey || item.status !== "scheduled") continue;
+        item.scopeKey = toScopeKey;
+        item.conversationId = toScopeKey.startsWith("conversation:") ? toScopeKey.slice("conversation:".length) : "";
+        item.url = String(sender?.tab?.url || item.url || "");
+        changed = true;
+      }
+      if (changed) await writeScheduledItems(items);
+      return { ok: true, changed };
+    });
+  }
+
+  async function findScheduleTargetTab(item) {
+    try {
+      const exact = await api.tabs?.get?.(item.tabId);
+      if (scheduleMatchesTab(item, exact)) return exact;
+    } catch (_) {}
+
+    if (!item.conversationId || !api.tabs?.query) return null;
+    try {
+      const tabs = await api.tabs.query({
+        url: [
+          "https://chatgpt.com/*",
+          "https://chat.openai.com/*",
+        ],
+      });
+      return tabs.find((tab) => scheduleMatchesTab(item, tab)) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function removeScheduledItem(id) {
+    return withScheduleMutation(async () => {
+      const { items } = await readScheduledItems();
+      await writeScheduledItems(items.filter((item) => item.id !== id));
+    });
+  }
+
+  async function failScheduledItem(item, detail, tabId = item?.tabId) {
+    try { await api.alarms?.clear?.(scheduleAlarmName(item?.id)); } catch (_) {}
+    await removeScheduledItem(item?.id);
+    await createScheduleNotification("failed", item, Number.isInteger(tabId) ? tabId : item?.tabId, detail);
+    return { ok: false, reason: detail };
+  }
+
+  async function fireScheduledItem(id) {
+    let item = null;
+    const claim = await withScheduleMutation(async () => {
+      const { items } = await readScheduledItems();
+      item = items.find((entry) => entry.id === id) || null;
+      if (!item) return { ok: false, reason: "not-found" };
+      if (item.status === "firing") return { ok: false, reason: "already-firing" };
+      item.status = "firing";
+      item.firingAt = Date.now();
+      await writeScheduledItems(items);
+      return { ok: true };
+    });
+    if (!claim.ok || !item) return claim;
+
+    const lateness = Date.now() - item.scheduledAt;
+    if (lateness > SCHEDULE_LATE_GRACE_MS) {
+      return failScheduledItem(item, tr("已錯過排定時間超過 2 分鐘，為避免延遲誤送，本次不再補送。", "The scheduled time was missed by more than 2 minutes. It was not sent late."));
+    }
+
+    const targetTab = await findScheduleTargetTab(item);
+    if (!targetTab?.id) {
+      return failScheduledItem(item, tr("找不到仍停留在目標聊天室的 ChatGPT 分頁。", "No open ChatGPT tab is still on the target conversation."));
+    }
+
+    await createScheduleNotification("start", item, targetTab.id);
+
+    let response;
+    try {
+      response = await api.tabs.sendMessage(targetTab.id, {
+        type: "CQS_SCHEDULE_FIRE",
+        scheduleId: item.id,
+        text: item.text,
+        scopeKey: item.scopeKey,
+        scheduledAt: item.scheduledAt,
+      });
+    } catch (error) {
+      console.error("[CQS] scheduled send message failed", error);
+      return failScheduledItem(item, tr("無法連線到目標 ChatGPT 分頁，可能已被卸載、重新整理或關閉。", "The target ChatGPT tab could not be reached. It may have been unloaded, refreshed, or closed."), targetTab.id);
+    }
+
+    if (!response?.ok) {
+      return failScheduledItem(
+        item,
+        String(response?.message || tr("ChatGPT 頁面拒絕了這次定時發送。", "The ChatGPT page rejected the scheduled send.")),
+        targetTab.id,
+      );
+    }
+
+    await removeScheduledItem(item.id);
+    await createScheduleNotification("success", item, targetTab.id);
+    return { ok: true, submittedAt: Number(response.submittedAt) || Date.now() };
+  }
+
+  async function syncScheduledAlarms() {
+    if (!api.alarms?.create) return;
+    const { items, changed } = await readScheduledItems();
+    if (changed) await writeScheduledItems(items);
+
+    let existing = [];
+    try { existing = await api.alarms.getAll(); } catch (_) {}
+    const existingNames = new Set(existing.map((alarm) => String(alarm?.name || "")));
+    const wantedNames = new Set();
+    const now = Date.now();
+    const due = [];
+    const interrupted = [];
+    const missed = [];
+
+    for (const item of items) {
+      const name = scheduleAlarmName(item.id);
+      wantedNames.add(name);
+      if (item.status === "firing") {
+        interrupted.push(item);
+        continue;
+      }
+      if (item.scheduledAt > now) {
+        if (!existingNames.has(name)) {
+          try { await api.alarms.create(name, { when: item.scheduledAt }); } catch (error) { console.error("[CQS] alarm restore failed", error); }
+        }
+      } else if (now - item.scheduledAt <= SCHEDULE_LATE_GRACE_MS) {
+        due.push(item.id);
+      } else {
+        missed.push(item);
+      }
+    }
+
+    for (const alarm of existing) {
+      const name = String(alarm?.name || "");
+      if (name.startsWith(SCHEDULE_ALARM_PREFIX) && !wantedNames.has(name)) {
+        try { await api.alarms.clear(name); } catch (_) {}
+      }
+    }
+
+    for (const item of interrupted) {
+      await failScheduledItem(item, tr("Firefox 背景程序在發送途中重新啟動。為避免重複送出，本次不自動重試。", "The Firefox background process restarted during sending. It was not retried to avoid a duplicate."));
+    }
+    for (const item of missed) {
+      await failScheduledItem(item, tr("Firefox 未能在排定時間附近執行，已超過 2 分鐘容許範圍，本次未送出。", "Firefox could not run near the scheduled time. The 2-minute grace window expired, so it was not sent."));
+    }
+    for (const itemId of due) {
+      void fireScheduledItem(itemId);
+    }
+  }
+
+
   function isAllowedArchiveUrl(value) {
     try {
       const url = new URL(String(value || ""));
@@ -441,6 +803,93 @@
       }
     }
     throw new Error(tr("所有下載端點皆失敗（{failures}）", "All download endpoints failed ({failures})", { failures: failures.join("; ") }));
+  }
+
+  function safeDirectDownloadFilename(value, fallback = "ChatGPT-file") {
+    let name = String(value || "").trim();
+    try { name = decodeURIComponent(name); } catch (_) {}
+    name = name.split(/[\\/]/).pop() || "";
+    name = name
+      .replace(/[<>:"|?*\x00-\x1f\x7f]/g, "_")
+      .replace(/[. ]+$/g, "")
+      .trim();
+    if (!name) name = String(fallback || "ChatGPT-file").replace(/[\\/]/g, "_");
+    if (name.length > 220) {
+      const dot = name.lastIndexOf(".");
+      const extension = dot > 0 && name.length - dot <= 20 ? name.slice(dot) : "";
+      name = `${name.slice(0, Math.max(1, 220 - extension.length))}${extension}`;
+    }
+    return name || "ChatGPT-file";
+  }
+
+  function directDownloadHeaders(resolved) {
+    const headers = resolved?.headers && typeof resolved.headers === "object" ? resolved.headers : {};
+    return Object.entries(headers)
+      .filter(([name, value]) => name && value !== undefined && value !== null)
+      .map(([name, value]) => ({ name: String(name), value: String(value) }));
+  }
+
+  function directDownloadOptions(resolved, filename, sender) {
+    const options = {
+      url: resolved.url,
+      filename,
+      conflictAction: "uniquify",
+      saveAs: false,
+    };
+    const headers = directDownloadHeaders(resolved);
+    if (headers.length) options.headers = headers;
+    if (sender?.tab?.incognito) options.incognito = true;
+    if (typeof sender?.tab?.cookieStoreId === "string" && sender.tab.cookieStoreId) options.cookieStoreId = sender.tab.cookieStoreId;
+    return options;
+  }
+
+  async function startDirectDownload(message, sender) {
+    if (!api.downloads?.download) {
+      return { ok: false, reason: "downloads-unavailable", message: tr("Firefox 下載管理器無法使用。", "The Firefox download manager is unavailable.") };
+    }
+    const senderUrl = String(sender?.tab?.url || "");
+    if (!/^https:\/\/(?:chatgpt\.com|chat\.openai\.com)(?:\/|$)/i.test(senderUrl)) {
+      return { ok: false, reason: "invalid-sender", message: tr("直接下載只能從 ChatGPT 對話頁啟動。", "Direct download can only be started from a ChatGPT conversation page.") };
+    }
+
+    const controller = new AbortController();
+    let resolved;
+    try {
+      resolved = await resolveArchiveFileRequest(message, controller.signal);
+    } catch (error) {
+      return { ok: false, reason: "resolve-failed", message: error?.message || tr("無法解析檔案下載網址。", "Could not resolve the file download URL.") };
+    }
+
+    const fallbackName = String(message?.fileId || "ChatGPT-file");
+    const filename = safeDirectDownloadFilename(resolved?.fileName || message?.filename, fallbackName);
+    const options = directDownloadOptions(resolved, filename, sender);
+
+    try {
+      const downloadId = await api.downloads.download(options);
+      return { ok: true, downloadId, filename, strategy: resolved.strategy || "" };
+    } catch (firstError) {
+      // A signed URL can expire between page-side resolution and Firefox accepting the
+      // download. If an ID is available, resolve it once more without the stale URL.
+      if (String(message?.url || "").trim() && String(message?.fileId || "").trim()) {
+        try {
+          const fresh = await resolveArchiveFileRequest({ ...message, url: "" }, controller.signal);
+          const freshName = safeDirectDownloadFilename(fresh?.fileName || filename, fallbackName);
+          const downloadId = await api.downloads.download(directDownloadOptions(fresh, freshName, sender));
+          return { ok: true, downloadId, filename: freshName, strategy: fresh.strategy || "file-id-refresh" };
+        } catch (retryError) {
+          return {
+            ok: false,
+            reason: "download-failed",
+            message: tr("Firefox 無法開始下載：{error}", "Firefox could not start the download: {error}", { error: retryError?.message || firstError?.message || tr("未知錯誤", "Unknown error") }),
+          };
+        }
+      }
+      return {
+        ok: false,
+        reason: "download-failed",
+        message: tr("Firefox 無法開始下載：{error}", "Firefox could not start the download: {error}", { error: firstError?.message || tr("未知錯誤", "Unknown error") }),
+      };
+    }
   }
 
   function registerArchiveDownloadPort() {
@@ -617,8 +1066,23 @@
     if (message.type === "CQS_QUEUE_LEASE_TRANSFER") {
       return transferQueueLease(message, sender);
     }
+    if (message.type === "CQS_SCHEDULE_CREATE") {
+      return createScheduledMessage(message, sender);
+    }
+    if (message.type === "CQS_SCHEDULE_LIST") {
+      return listScheduledMessages(message, sender);
+    }
+    if (message.type === "CQS_SCHEDULE_CANCEL") {
+      return cancelScheduledMessage(message, sender);
+    }
+    if (message.type === "CQS_SCHEDULE_SCOPE_TRANSFER") {
+      return transferScheduledScope(message, sender);
+    }
     if (message.type === "CQS_RESPONSE_COMPLETE") {
       return createCompletionNotification(message, sender);
+    }
+    if (message.type === "CQS_DIRECT_DOWNLOAD") {
+      return startDirectDownload(message, sender);
     }
     if (message.type === "CQS_TEST_NOTIFICATION") {
       return createTestNotification();
@@ -630,8 +1094,10 @@
   function registerNotificationClickListener() {
     if (clickListenerRegistered || !api.notifications?.onClicked?.addListener) return;
     api.notifications.onClicked.addListener(async (id) => {
-      const match = /^cqs-response-(-?\d+)-/.exec(String(id));
-      const tabId = match ? Number(match[1]) : -1;
+      const value = String(id);
+      const responseMatch = /^cqs-response-(-?\d+)-/.exec(value);
+      const scheduleMatch = /^cqs-schedule-(?:start|success|failed)-(-?\d+)-/.exec(value);
+      const tabId = Number(responseMatch?.[1] ?? scheduleMatch?.[1] ?? -1);
       try {
         if (tabId >= 0) {
           const tab = await api.tabs.get(tabId);
@@ -659,6 +1125,17 @@
     const { leases, changed } = await readQueueLeaseState();
     if (changed) await writeQueueLeaseState(leases);
   }).catch(() => undefined);
+
+  try {
+    api.alarms?.onAlarm?.addListener((alarm) => {
+      const name = String(alarm?.name || "");
+      if (!name.startsWith(SCHEDULE_ALARM_PREFIX)) return;
+      const id = name.slice(SCHEDULE_ALARM_PREFIX.length);
+      if (id) void fireScheduledItem(id);
+    });
+  } catch (_) {}
+
+  void syncScheduledAlarms().catch((error) => console.error("[CQS] scheduled alarm sync failed", error));
 
   registerNotificationClickListener();
   registerArchiveDownloadPort();

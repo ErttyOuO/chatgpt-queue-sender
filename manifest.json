@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "0.8.6",
+  "version": "0.8.9",
   "description": "__MSG_extensionDescription__",
   "permissions": [
-    "storage"
-  ],
-  "optional_permissions": [
-    "notifications"
+    "storage",
+    "alarms",
+    "notifications",
+    "downloads"
   ],
   "host_permissions": [
     "https://chatgpt.com/*",
@@ -58,6 +58,7 @@
         "export/archive-export.js",
         "export/handoff-prompt.js",
         "export/custom-prompts.js",
+        "export/direct-download.js",
         "content.js"
       ],
       "css": [
