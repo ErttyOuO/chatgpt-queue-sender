@@ -23,7 +23,7 @@ npm run verify
 Run from inside this folder:
 
 ```bash
-zip -X -r ../chatgpt-queue-sender-firefox-v0.8.9-amo.xpi \
+zip -X -r ../chatgpt-queue-sender-firefox-v0.9.4-amo.xpi \
   manifest.json i18n.js background.js content.js content.css \
   _locales export popup icons
 ```
@@ -35,8 +35,8 @@ The XPI archive root must directly contain `manifest.json`; do not zip the paren
 Run from the parent folder after deleting `node_modules`:
 
 ```bash
-zip -X -r chatgpt-queue-sender-firefox-v0.8.9-source.zip \
-  chatgpt-queue-sender-firefox-v0.8.9-source
+zip -X -r chatgpt-queue-sender-firefox-v0.9.4-source.zip \
+  chatgpt-queue-sender-firefox-v0.9.4-source
 ```
 
 ## Permission design
@@ -51,7 +51,7 @@ Required permissions:
 - `alarms` creates absolute one-shot wakeups for scheduled sends.
 - `notifications` reports scheduled-send trigger/success/failure. Ordinary response-completion notifications remain user-configurable in the popup.
 
-Markdown and ZIP archive generation still use local `Blob` objects and the existing background attachment channel. v0.8.9 additionally requests Firefox `downloads` permission for the user-clicked direct-download button shown beside ChatGPT-provided file citations. The background script first resolves an allowed ChatGPT/OpenAI/oaiusercontent URL, then passes only that selected file to Firefox `downloads.download()`.
+Markdown and ZIP archive generation still use local `Blob` objects and the existing background attachment channel. v0.8.9+ additionally requests Firefox `downloads` permission for the user-clicked direct-download button shown beside ChatGPT-provided file citations. The background script first resolves an allowed ChatGPT/OpenAI/oaiusercontent URL, then passes only that selected file to Firefox `downloads.download()`.
 
 Required host permissions cover the two supported ChatGPT pages plus OpenAI-controlled attachment hosts:
 

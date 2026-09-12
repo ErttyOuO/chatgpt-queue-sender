@@ -2,16 +2,59 @@
 
 ## Package
 
-- File: `chatgpt-queue-sender-firefox-v0.8.9-amo.xpi`
-- Version: `0.8.9`
+- File: `chatgpt-queue-sender-firefox-v0.9.4-amo.xpi`
+- Version: `0.9.4`
 - Manifest: MV3
 - Minimum Firefox desktop version: `140.0`
 - Minimum Firefox Android version: `142.0`
 - Required permissions: `storage`, `alarms`, `notifications`, `downloads`
-- No optional API permission is required for v0.8.9.
+- No optional API permission is required for v0.9.2.
 - Host permissions are limited to ChatGPT/OpenAI pages and OpenAI-controlled attachment hosts.
 
-## v0.8.9 feature overview
+## v0.9.4 feature overview
+
+v0.9.4 adds visible per-file download feedback to the compact latest-file list below **Export & Transfer**. A click immediately shows an inline spinner while ChatGPT attachment authorization is resolved and the download request is handed to Firefox. A green check indicates a successful handoff; a red error indicator exposes the returned failure message on hover. Status is keyed by file identity so React rerenders do not erase an in-progress spinner.
+
+For ChatGPT-native artifact buttons, the success state means the extension successfully delegated the click to ChatGPT; it does not claim the native transfer is complete. No new permission, host permission, remote service, analytics, telemetry, or data collection is introduced.
+
+## Previous v0.9.3 feature overview
+
+v0.9.3 changes the compact latest-file UI below **Export & Transfer** from a horizontal chip rail to a vertical file list. Each file occupies one row, while file-type accents, compact filenames, tooltips, and click-to-download behavior remain unchanged. The list has a compact maximum height and uses internal vertical scrolling when many files are present, preventing the UI from extending across the chat.
+
+No new permission, host permission, remote service, telemetry, or data collection is introduced in v0.9.3.
+
+## Previous v0.9.2 feature overview
+
+v0.9.2 adds ChatGPT-generated assistant images to the compact latest-content rail below Export & Transfer. Estuary image URLs containing a `file_...` identity are shown as `IMG` cards and use the existing Firefox download path when clicked. Duplicate file identities are collapsed.
+
+The elapsed response timer is now anchored to the current user turn and is preserved through same-turn thinking/tool/file-processing UI transitions and the draft-to-conversation route change. File organization / processing statuses rendered outside the latest assistant turn are also recognized as active work.
+
+No new permission, host permission, remote service, telemetry, or data collection is introduced in v0.9.2.
+
+## Previous v0.9.1 feature overview
+
+v0.9.1 integrates ChatGPT-native generated artifact buttons into the compact latest-file rail below **Export & Transfer**. Native XPI/ZIP/source-style buttons that already download when clicked do not receive an extra injected direct-download icon; the compact rail delegates back to the original ChatGPT control. Format-token recognition also covers labels that expose `XPI`, `ZIP`, `PDF`, `DOCX`, and similar types without a literal filename extension.
+
+Queue input now cooperates with ChatGPT dictation. If the user presses **Add to queue** while dictation is active, the extension activates the dictation finish/submit control, waits for transcription to settle in the composer, and only then captures the text. Long-press one-time scheduling uses the same guard. If transcription cannot be finalized safely, the extension fails closed and does not queue partial text.
+
+No new permission, host permission, remote service, telemetry, or data collection is introduced in v0.9.1.
+
+## Previous v0.9.0 feature overview
+
+
+v0.9.0 adds a compact latest-file activity rail directly below **Export & Transfer**. It follows only the newest assistant response and shows detected downloadable files as a single horizontally scrollable row. File type is intentionally the strongest visual cue: PDF is red, Markdown white/light, Word/DOCX blue, spreadsheets green, presentations orange, archives purple, with additional consistent type colors. Long filenames are shortened visually while the full name remains in the title/accessibility label. Clicking a chip reuses the existing direct-download path.
+
+When the current response is still generating and no file from that response is available, the same compact location displays an elapsed generation timer. Previous-response files are suppressed as soon as a new response cycle begins, so stale files do not look like current outputs. This feature adds no new extension permission and does not transmit data to a developer-controlled service.
+
+## Previous v0.8.10 feature overview
+
+v0.8.10 fixes a Firefox-specific direct-download failure where the extension passed `cookieStoreId` into `downloads.download()` without requesting the `cookies` permission. The extension now omits that option; no new `cookies` permission is requested.
+
+The direct-download UI now also recognizes ChatGPT assistant file controls rendered as generic buttons containing `library-file-icon`, even when no `data-file-citation-*` attributes are exposed. File identity is recovered first from existing React metadata; if that is unavailable, the extension can conservatively match the current conversation's structured attachment data by exact filename, unique version, or an unambiguous same-message/order relationship. Ambiguous matches fail closed.
+
+The existing `downloads` permission remains unchanged and is still used only after an explicit click on the adjacent download icon.
+
+## Previous v0.8.9 feature overview
 
 v0.8.9 adds a compact direct-download action beside downloadable file citations in ChatGPT assistant replies. The original ChatGPT file button remains unchanged for previewing; the injected adjacent download icon resolves the file ID and sends the selected file directly to Firefox's download manager, removing the extra preview → three-dot menu → Download steps.
 

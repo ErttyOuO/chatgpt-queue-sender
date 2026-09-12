@@ -22,7 +22,7 @@ Long-press the existing Add to queue button to open the one-time Scheduled send 
 
 Scheduled sends fail closed rather than risk a mis-send: they do not overwrite a manual draft, interrupt an active response, compete with another queue runner, or send into a different conversation. Firefox/OS notifications report when the scheduled task triggers and whether submission succeeds or fails.
 
-A compact direct-download icon is also added beside downloadable file citations in assistant replies. The original filename still opens the normal ChatGPT preview, while the new adjacent action sends that selected file directly to Firefox's download manager.
+A compact direct-download icon is also added beside downloadable file controls in assistant replies, including both file-citation controls and newer generic `library-file-icon` buttons. The original filename still opens the normal ChatGPT preview, while the new adjacent action sends that selected file directly to Firefox's download manager.
 
 Completion alerts also work with messages you send manually, not only queued prompts. You can choose a gentle sound, a Firefox or operating-system notification, or both.
 
@@ -35,6 +35,11 @@ Main features:
 - Background absolute-time alarm; no recurring schedule
 - Scheduled-send trigger, success, and failure notifications
 - Directly download ChatGPT-provided file citations without opening the preview menu
+- Show the newest assistant files in a compact color-coded rail below Export & Transfer
+- Show per-file loading, successful handoff, and failure feedback directly on the latest-file rows
+- Include ChatGPT-native XPI/ZIP/source artifact buttons in the same compact vertical latest-file list without adding duplicate download icons
+- Finish active ChatGPT dictation and wait for the transcript before Add to queue or one-time scheduling captures the composer text
+- Show an elapsed generation timer in the same compact location when the current response has no downloadable file yet
 - Automatically continue after each response finishes
 - Compact progress bar and bottom-right queue manager
 - Edit, delete, reorder, and copy queued prompts
@@ -86,6 +91,10 @@ ChatGPT 回覆中的可下載檔案引用旁也會出現一顆小型直接下載
 - Firefox 背景絕對時間 alarm，不做循環排程
 - 定時發送觸發、成功與失敗通知
 - 直接下載 ChatGPT 提供的檔案引用，不必先進入預覽與三點選單
+- 「匯出與轉移」下方以格式色框顯示最新 assistant 回覆的可下載檔案
+- ChatGPT 原生可下載的 XPI／ZIP／source 產物也會整合進同一列，不再重複插入下載 icon
+- 聽寫中按「加入佇列」或長按定時時，會先完成聽寫並等待文字轉錄完成再擷取內容
+- 本輪尚未出現可下載檔案且仍在生成時，同一位置顯示經過時間
 - 儲存、編輯、排序與刪除常用自訂提示語
 - 滑鼠移到提示語時顯示複製或發送操作
 - 回覆完成後自動接續下一則
@@ -133,7 +142,7 @@ Required so scheduled sends can always report trigger, success, or failure throu
 
 ### `downloads`
 
-Required for the v0.8.9 direct-download action beside ChatGPT-provided file citations. It is used only after an explicit user click to start the selected file in Firefox's native download manager with a safe filename and unique-name conflict handling. The extension does not inspect or modify unrelated download history.
+Required for the v0.8.9+ direct-download action beside ChatGPT-provided file controls. It is used only after an explicit user click to start the selected file in Firefox's native download manager with a safe filename and unique-name conflict handling. The extension does not inspect or modify unrelated download history.
 
 ### ChatGPT page access
 

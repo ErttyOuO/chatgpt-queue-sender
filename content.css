@@ -752,7 +752,7 @@ button#cqs-floating-button .cqs-btn-badge[hidden] {
 }
 
 
-/* v0.8.9: direct download action beside assistant file citations. */
+/* Direct download actions beside assistant file controls. */
 .cqs-direct-download-button[data-cqs-direct-download="1"] {
   appearance: none;
   display: inline-flex;

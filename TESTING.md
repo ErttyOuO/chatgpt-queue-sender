@@ -182,6 +182,75 @@ npm run verify
 
 `npm run verify` runs syntax/static checks, queue/background/archive simulations, the jsdom UI suites, and Mozilla `addons-linter` against a staged directory containing runtime extension files only. The same commands are included in `.github/workflows/validate.yml`.
 
+## v0.9.4 latest-file download feedback regression
+
+1. Click a directly resolvable PDF/ZIP/DOCX row below **Export & Transfer** and confirm a spinner appears immediately at the right edge.
+2. If authorization/resolution takes several seconds, confirm the spinner remains visible for the entire wait and survives latest-file UI rerenders.
+3. On successful `CQS_DIRECT_DOWNLOAD`, confirm the spinner becomes a green check briefly.
+4. Force a resolver/download failure and confirm the row shows a red error icon; hover it and confirm the detailed error message is preserved.
+5. Click a ChatGPT-native XPI/ZIP artifact row. Confirm a short spinner is visible and then changes to delegated/success feedback without adding a duplicate adjacent download icon.
+6. Confirm repeated clicks while one row is in the loading state do not start duplicate downloads.
+7. Run `npm run test:direct-download` and `npm run test:recent-files`.
+
+## v0.9.3 vertical latest-file list regression
+
+1. Generate a response containing at least three downloadable files. Confirm the file cards below **Export & Transfer** appear one per row from top to bottom, not side by side.
+2. Confirm every row uses the same compact width and preserves the file-type accent and truncated filename.
+3. Confirm there is no horizontal scrollbar and no horizontal scroll gesture is required.
+4. Generate more than five files. Confirm the file area stays compact and scrolls vertically inside itself rather than extending across the chat or growing indefinitely.
+5. Confirm the generation timer still occupies the same activity area when the current response has no files.
+6. Run `npm run test:recent-files` and confirm `recent-files-layout-simulation.mjs` passes.
+
+## v0.9.2 generated-image and elapsed-timer regression
+
+1. Start a new response and note the elapsed timer. Trigger additional same-turn processing/work UI and confirm the timer does not restart from `00:00`.
+2. Start from a draft/new-chat route, send the first message, let ChatGPT navigate to `/c/...`, and confirm the elapsed timer preserves its original start.
+3. During a response, expose a top-level `正在整理檔案` / `Organizing files` status outside the assistant message and confirm the timer remains visible.
+4. Confirm a generated image using `backend-api/estuary/content?id=file_...` appears as an `IMG` card in the latest-content rail.
+5. Click the image card and confirm Firefox begins the image download through the existing `CQS_DIRECT_DOWNLOAD` background path.
+6. If the same image file ID is exposed through another attachment source, confirm only one rail card remains.
+7. Run `npm run test:generation-media`.
+
+## v0.9.1 native-artifact rail and dictation regression
+
+1. In a latest assistant response containing native generated buttons such as `Firefox／AMO XPI`, `完整原始碼 ZIP`, and `GitHub-ready 原始碼 ZIP`, confirm all appear in the compact latest-file rail.
+2. Confirm those native artifact buttons do **not** receive an extra adjacent CQS direct-download icon.
+3. Click each corresponding latest-file chip and confirm ChatGPT's original native button is invoked.
+4. Confirm labels ending in versions such as `v0.9.0` still classify as XPI/ZIP rather than extension `0`.
+5. Start ChatGPT dictation, speak text, then press **Add to queue** before manually stopping dictation.
+6. Confirm the extension finishes/submits dictation first, waits until the transcript appears and stabilizes in the composer, then adds that final text to the queue.
+7. Confirm an idle non-dictation composer is unaffected.
+8. Repeat with a long press and confirm the one-time scheduling panel opens only after dictation handling completes.
+9. If transcription never settles, confirm no partial composer text is queued and a local error toast is shown.
+
+## v0.9.0 latest-file rail and generation timer regression
+
+1. Open a conversation whose latest assistant response contains a PDF, Markdown, DOCX, XLSX, PPTX, and ZIP/XPI output. Confirm one compact file row appears directly below **Export & Transfer**.
+2. Confirm PDF has a red first-impression outline, Markdown a white/light outline, DOC/DOCX blue, spreadsheets green, presentations orange, and archives purple.
+3. Confirm the extension label (for example `PDF`, `MD`, `DOCX`) remains visible even when a filename is long.
+4. Confirm long names are visually shortened and the full filename remains available from the chip tooltip / accessible label.
+5. With many files, confirm the current UI stacks them vertically and uses an internal vertical scrollbar after the compact height limit.
+6. Click a recent-file chip and confirm it uses the direct-download flow rather than opening ChatGPT file preview.
+7. Send a new prompt after a previous response that contained downloadable files. While the new response has not produced an assistant turn yet, confirm the old file chips disappear.
+8. While the new response is generating and no current-response file exists, confirm the same location shows `生成中 / Generating` and an increasing `MM:SS` timer.
+9. When the current assistant response begins but still has no file, confirm the timer continues.
+10. When a file appears in the current response, confirm the timer is replaced by the current-response file row.
+11. After generation completes, confirm current-response file chips remain visible until a newer response becomes current.
+12. For a response that finishes without downloadable files, confirm the timer disappears and the compact host does not leave an empty panel.
+13. Run `npm run test:recent-files` and confirm the color mapping, compact filename, timer formatting, previous-response suppression, and post-completion visibility tests pass.
+
+## v0.8.10 generic direct-download regression
+
+1. Verify a normal ChatGPT assistant file button with `svg[data-testid="library-file-icon"]` but no `data-file-citation-*` attributes receives the adjacent direct-download icon.
+2. Verify a button labelled `consulting_v2.pdf` can recover its file ID from React metadata and download without opening the preview.
+3. Verify a button labelled like `下載 v2.2.12 驗證報告` can use the structured conversation fallback when the visible label is not the real filename.
+4. Verify exact filename matching is preferred over heuristic matching.
+5. Verify version matching is accepted only when it identifies one unique assistant attachment.
+6. Verify ambiguous multi-file metadata does not create or execute a potentially wrong single-file download.
+7. Verify `downloads.download()` receives no `cookieStoreId` without the `cookies` permission, including when `sender.tab.cookieStoreId` is `firefox-default` or a container ID.
+8. Confirm the existing filename-citation path still works and React rerenders restore the injected icon.
+9. Confirm user upload buttons do not receive an assistant direct-download icon.
+
 ## v0.8.9 direct file download regression
 
 1. Open a ChatGPT assistant reply containing a generated file citation with `data-file-citation-primary-file-id`.

@@ -36,6 +36,7 @@ const browser = {
   downloads: {
     async download(options) {
       downloadCalls.push({ ...options });
+      if (Object.prototype.hasOwnProperty.call(options, 'cookieStoreId')) throw new Error('No permission for cookieStoreId: firefox-default');
       if (failFirstDownload && downloadCalls.length === 1) throw new Error('stale signed URL');
       return 99 + downloadCalls.length;
     },
@@ -119,7 +120,7 @@ const sameOrigin = await runtimeMessage.listener({
 assert.equal(sameOrigin?.ok, true, 'same-origin direct download did not start');
 assert.ok(downloadCalls[0].headers?.some((header) => header.name === 'authorization' && header.value === 'Bearer temporary-token'), 'same-origin direct download must retain the temporary authorization header');
 assert.ok(downloadCalls[0].headers?.some((header) => header.name === 'chatgpt-account-id' && header.value === 'account-123'), 'same-origin direct download must retain the ChatGPT account header');
-assert.equal(downloadCalls[0].cookieStoreId, 'firefox-container-7', 'Firefox container cookie store should follow the source tab');
+assert.equal(downloadCalls[0].cookieStoreId, undefined, 'direct download must omit cookieStoreId unless the extension has the cookies permission');
 
 failFirstDownload = true;
 downloadCalls.length = 0;
@@ -148,5 +149,5 @@ console.log(JSON.stringify({
   invalidSenderBlocked: true,
   staleSignedUrlRefresh: true,
   sameOriginAuthorization: true,
-  firefoxContainerContext: true,
+  cookieStorePermissionRegressionFixed: true,
 }));

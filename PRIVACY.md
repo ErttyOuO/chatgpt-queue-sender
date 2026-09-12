@@ -27,8 +27,14 @@ v0.8.7 also supports one-time scheduled sends. A scheduled message, its absolute
 
 The `notifications` permission is required in v0.8.7 so every scheduled send can report that it was triggered and whether submission succeeded or failed. The toolbar popup still lets the user disable ordinary response-completion notifications independently.
 
-v0.8.9 adds an explicit direct-download button beside file citations in ChatGPT assistant replies. When the user clicks that button, the extension reads the file identifier already exposed by the current ChatGPT page, temporarily resolves the current authorized download URL, and passes only that selected file to Firefox's native download manager. The new `downloads` permission is not used to inspect, erase, open, or alter unrelated downloads.
+v0.8.9+ adds an explicit direct-download button beside ChatGPT assistant file controls; v0.8.10 also supports generic `library-file-icon` buttons that do not expose citation attributes. When the user clicks that button, the extension reads the file identifier already exposed by the current ChatGPT page, temporarily resolves the current authorized download URL, and passes only that selected file to Firefox's native download manager. The new `downloads` permission is not used to inspect, erase, open, or alter unrelated downloads.
 
+
+v0.9.2 also reads generated assistant image elements already rendered on the current ChatGPT page and keeps a local elapsed-time timestamp for the current response cycle. These features add no new permission, remote service, telemetry, or developer-controlled data transfer.
+
+v0.9.1 also integrates ChatGPT-native artifact buttons into the local latest-file rail and can finish ChatGPT dictation before queueing text. Both behaviors operate only on the current ChatGPT page and add no new permission, remote service, telemetry, or developer-controlled data transfer.
+
+v0.9.0 also shows a compact latest-file rail and response elapsed timer below Export & Transfer. This UI reads only the currently rendered ChatGPT assistant controls and the extension's existing local response state. It adds no new permission and sends no file names, timer values, or conversation data to the developer.
 The extension does not use analytics, telemetry, tracking, advertising SDKs, cloud databases, remote code, or an OpenAI API key.
 
 The extension reads the Firefox UI language locally only to choose English or Traditional Chinese interface text. The language value is not stored, transmitted, or used for profiling.
@@ -67,8 +73,14 @@ v0.8.7 另支援單次定時發送。定時訊息、絕對發送時間、目標�
 
 v0.8.7 將 `notifications` 列為必要權限，讓每次定時發送都能回報「已觸發」以及「成功／失敗」結果。工具列 popup 仍可獨立關閉一般回覆完成通知。
 
-v0.8.9 會在 ChatGPT assistant 回覆中的檔案引用旁加入明確的直接下載按鈕。只有使用者親自點擊該按鈕時，擴充功能才會讀取目前 ChatGPT 頁面已提供的檔案識別碼、暫時解析目前帳號可用的下載網址，再把這一個被選取的檔案交給 Firefox 原生下載管理器。新增的 `downloads` 權限不會用來檢查、刪除、開啟或修改其他無關下載紀錄。
+v0.8.9 起會在 ChatGPT assistant 回覆中的檔案控制旁加入明確的直接下載按鈕；v0.8.10 也支援沒有 citation attributes 的 `library-file-icon` 按鈕。只有使用者親自點擊該按鈕時，擴充功能才會讀取目前 ChatGPT 頁面已提供的檔案識別碼、暫時解析目前帳號可用的下載網址，再把這一個被選取的檔案交給 Firefox 原生下載管理器。新增的 `downloads` 權限不會用來檢查、刪除、開啟或修改其他無關下載紀錄。
 
+
+v0.9.2 也會讀取目前 ChatGPT 頁面已顯示的 assistant 生成圖片元素，並在本機保存本輪回覆的計時起點。這些功能不新增權限、遠端服務、遙測或傳送資料給開發者。
+
+v0.9.1 也會把 ChatGPT 原生產物下載按鈕整合進本機最新檔案列，並可在加入佇列前先完成 ChatGPT 聽寫。兩項功能都只操作目前 ChatGPT 頁面，不新增權限、遠端服務、遙測或傳送資料給開發者。
+
+v0.9.0 也會在「匯出與轉移」下方顯示最新檔案列與回覆經過時間。這個 UI 只讀取目前頁面已渲染的 assistant 檔案控制，以及擴充功能既有的本機回覆狀態；不新增權限，也不會把檔名、計時或聊天內容傳送給開發者。
 本擴充功能不使用分析、遙測、追蹤、廣告 SDK、雲端資料庫、遠端程式碼或 OpenAI API Key。
 
 擴充功能只會在本機讀取 Firefox 介面語言，用來選擇英文或繁體中文介面；語言資訊不會被儲存、傳送或用於建立使用者資料。

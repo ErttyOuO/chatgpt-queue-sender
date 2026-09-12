@@ -55,6 +55,7 @@
     scheduleLongPressTriggered: false,
     scheduleDraftSource: "",
     scheduleItems: [],
+    dictationFinalizing: false,
     responseMonitor: {
       initialized: false,
       path: location.pathname,
@@ -69,6 +70,7 @@
       stableIdleTicks: 0,
       cycleStartedAt: 0,
       lastAssistantChangeAt: 0,
+      lastCompletedAt: 0,
     },
   };
 
@@ -366,7 +368,7 @@
     await storageRemoveKey(getScopedStorageKey(oldScopeKey));
     await transferQueueLease(oldScopeKey, newScopeKey);
     if (state.activeRunScope === oldScopeKey) state.activeRunScope = newScopeKey;
-    resetResponseMonitor({ keepBusy: true });
+    resetResponseMonitor({ keepBusy: true, preserveCycle: true });
     markManagerDirty();
     renderUi();
     void refreshScheduledItems();
@@ -606,11 +608,18 @@
     return english.test(text) || chinese.test(text);
   }
 
+  function isLikelyFileWorkText(value) {
+    const text = normalizeText(value);
+    if (!text || text.length > 220) return false;
+    const english = /(?:organis(?:e|ing)|organiz(?:e|ing)|processing|preparing|indexing|reading|analy[sz]ing|uploading|downloading|working\s+with)\s+(?:the\s+)?(?:file|files|document|documents|attachment|attachments)/i;
+    const chinese = /(?:正在)?(?:整理|處理|处理|準備|准备|索引|讀取|读取|分析|上傳|上传|下載|下载)(?:檔案|档案|文件|附件)|(?:檔案|档案|文件|附件)(?:整理|處理|处理中|處理中|分析|讀取|读取|準備|准备)中/;
+    return english.test(text) || chinese.test(text);
+  }
+
   function getActiveWorkIndicator() {
     const turn = getLatestAssistantTurn();
-    if (!turn) return null;
 
-    const explicit = byBottomMostVisible([
+    const explicitSelectors = [
       "[aria-busy='true']",
       "[data-state='loading']",
       "[data-state='pending']",
@@ -631,39 +640,77 @@
       "button[aria-label*='取消工作']",
       "button[aria-label*='停止任务']",
       "button[aria-label*='取消任务']",
-    ], turn);
-    if (explicit) return explicit;
+    ];
 
-    let candidates = [];
+    if (turn) {
+      const explicit = byBottomMostVisible(explicitSelectors, turn);
+      if (explicit) return explicit;
+
+      let candidates = [];
+      try {
+        candidates = [...turn.querySelectorAll([
+          "[role='status']",
+          "[aria-live='polite']",
+          "[aria-live='assertive']",
+          "[data-testid*='status']",
+          "[data-testid*='thinking']",
+          "[data-testid*='reasoning']",
+          "[class*='shimmer']",
+          "[class*='animate-']",
+          "[class*='animate_']",
+          "[class*='pulse']",
+          "[class*='loading']",
+          "[class*='thinking']",
+        ].join(","))];
+      } catch (_) {}
+
+      const local = candidates.find((element) => {
+        if (isCqsUi(element) || !isVisible(element)) return false;
+        const text = element.innerText || element.textContent || element.getAttribute?.("aria-label") || "";
+        const className = String(element.getAttribute?.("class") || "");
+        let animated = /(?:shimmer|animate-|animate_|pulse|loading|thinking)/i.test(className);
+        try {
+          const style = window.getComputedStyle(element);
+          animated = animated || (style.animationName && style.animationName !== "none");
+        } catch (_) {}
+        const statusSemantic = Boolean(element.matches?.("[role='status'], [aria-live], [data-testid*='status'], [data-testid*='thinking'], [data-testid*='reasoning']"));
+        if (animated && statusSemantic && normalizeText(text)) return true;
+        return animated && isLikelyActiveWorkText(text);
+      });
+      if (local) return local;
+    }
+
+    // ChatGPT can render file-organization / file-processing status outside the latest
+    // assistant turn (for example in a top-left work/status region). Treat those as part
+    // of the same response cycle so the elapsed timer and queue safety stay active.
+    let globalCandidates = [];
     try {
-      candidates = [...turn.querySelectorAll([
+      globalCandidates = [...document.querySelectorAll([
         "[role='status']",
         "[aria-live='polite']",
         "[aria-live='assertive']",
         "[data-testid*='status']",
-        "[data-testid*='thinking']",
-        "[data-testid*='reasoning']",
+        "[data-testid*='progress']",
         "[class*='shimmer']",
         "[class*='animate-']",
         "[class*='animate_']",
         "[class*='pulse']",
         "[class*='loading']",
-        "[class*='thinking']",
       ].join(","))];
     } catch (_) {}
 
-    return candidates.find((element) => {
+    return globalCandidates.find((element) => {
       if (isCqsUi(element) || !isVisible(element)) return false;
       const text = element.innerText || element.textContent || element.getAttribute?.("aria-label") || "";
+      if (!isLikelyFileWorkText(text)) return false;
       const className = String(element.getAttribute?.("class") || "");
-      let animated = /(?:shimmer|animate-|animate_|pulse|loading|thinking)/i.test(className);
+      let animated = /(?:shimmer|animate-|animate_|pulse|loading|progress)/i.test(className);
       try {
         const style = window.getComputedStyle(element);
         animated = animated || (style.animationName && style.animationName !== "none");
       } catch (_) {}
-      const statusSemantic = Boolean(element.matches?.("[role='status'], [aria-live], [data-testid*='status'], [data-testid*='thinking'], [data-testid*='reasoning']"));
-      if (animated && statusSemantic && normalizeText(text)) return true;
-      return animated && isLikelyActiveWorkText(text);
+      const statusSemantic = Boolean(element.matches?.("[role='status'], [aria-live], [data-testid*='status'], [data-testid*='progress']"));
+      return animated || statusSemantic;
     }) || null;
   }
 
@@ -682,6 +729,142 @@
       "button[aria-label*='錄音']",
       "button[aria-label*='音訊']",
     ], root);
+  }
+
+  function getDictationCommitButton() {
+    const root = getComposerRoot() || document;
+    return byBottomMostVisible([
+      "button[aria-label='Submit dictation']",
+      "button[aria-label*='Submit dictation']",
+      "button[aria-label*='Finish dictation']",
+      "button[aria-label*='Done dictation']",
+      "button[aria-label*='Stop dictation']",
+      "button[aria-label*='Stop recording']",
+      "button[data-testid*='dictat'][aria-label*='Submit']",
+      "button[data-testid*='dictat'][aria-label*='Finish']",
+      "button[data-testid*='dictat'][aria-label*='Done']",
+      "button[data-testid*='dictat'][aria-label*='Stop']",
+      "button[aria-label*='提交聽寫']",
+      "button[aria-label*='送出聽寫']",
+      "button[aria-label*='完成聽寫']",
+      "button[aria-label*='結束聽寫']",
+      "button[aria-label*='停止聽寫']",
+      "button[aria-label*='提交听写']",
+      "button[aria-label*='发送听写']",
+      "button[aria-label*='完成听写']",
+      "button[aria-label*='结束听写']",
+      "button[aria-label*='停止听写']",
+    ], root);
+  }
+
+  function getActiveDictationControl() {
+    const root = getComposerRoot() || document;
+    return byBottomMostVisible([
+      "button[aria-label='Submit dictation']",
+      "button[aria-label*='Submit dictation']",
+      "button[aria-label*='Cancel dictation']",
+      "button[aria-label*='Stop dictation']",
+      "button[aria-label*='Finish dictation']",
+      "button[aria-label*='Done dictation']",
+      "button[aria-label*='Stop recording']",
+      "button[data-testid*='dictat'][aria-label*='Submit']",
+      "button[data-testid*='dictat'][aria-label*='Cancel']",
+      "button[data-testid*='dictat'][aria-label*='Stop']",
+      "button[aria-label*='聽寫'][aria-label*='提交']",
+      "button[aria-label*='聽寫'][aria-label*='取消']",
+      "button[aria-label*='聽寫'][aria-label*='停止']",
+      "button[aria-label*='聽寫'][aria-label*='完成']",
+      "button[aria-label*='听写'][aria-label*='提交']",
+      "button[aria-label*='听写'][aria-label*='取消']",
+      "button[aria-label*='听写'][aria-label*='停止']",
+      "button[aria-label*='听写'][aria-label*='完成']",
+    ], root);
+  }
+
+  function getTranscriptionIndicator() {
+    const root = getComposerRoot() || document;
+    let candidates = [];
+    try {
+      candidates = [...root.querySelectorAll([
+        "[role='status']",
+        "[aria-live='polite']",
+        "[aria-live='assertive']",
+        "[data-testid*='transcrib']",
+        "[data-state='transcribing']",
+        "[data-status='transcribing']",
+      ].join(","))];
+    } catch (_) {}
+    return candidates.find((node) => {
+      if (!isVisible(node) || isCqsUi(node)) return false;
+      const text = normalizeText([
+        node.getAttribute?.("aria-label") || "",
+        node.textContent || "",
+      ].join(" "));
+      return /(transcrib|dictation|正在轉錄|正在转录|轉錄中|转录中|處理聽寫|处理听写|語音轉文字|语音转文字)/i.test(text);
+    }) || null;
+  }
+
+  async function finishDictationBeforeQueue(timeoutMs = 20000) {
+    const active = getActiveDictationControl();
+    if (!active) return { ok: true, active: false };
+
+    if (state.dictationFinalizing) {
+      return { ok: false, active: true, reason: "already-finalizing" };
+    }
+
+    const commit = getDictationCommitButton();
+    if (!commit || isDisabled(commit)) {
+      showToast(tr(
+        "偵測到聽寫仍在進行，但找不到可安全完成聽寫的按鈕；請先手動結束聽寫再加入佇列。",
+        "Dictation is still active, but a safe finish control could not be found. Finish dictation manually before adding to the queue.",
+      ), { duration: 5200 });
+      return { ok: false, active: true, reason: "no-commit-control" };
+    }
+
+    state.dictationFinalizing = true;
+    const startedAt = Date.now();
+    const beforeText = getComposerText();
+    let lastText = beforeText;
+    let lastTextChangeAt = startedAt;
+    let changed = false;
+
+    try {
+      showToast(tr("正在結束聽寫並等待文字完成…", "Finishing dictation and waiting for the transcript…"), { duration: 2600 });
+      commit.click();
+
+      while (Date.now() - startedAt < timeoutMs) {
+        const now = Date.now();
+        const currentText = getComposerText();
+        if (currentText !== lastText) {
+          lastText = currentText;
+          lastTextChangeAt = now;
+          changed = true;
+        }
+
+        const dictationStillActive = Boolean(getActiveDictationControl());
+        const transcribing = Boolean(getTranscriptionIndicator());
+        const stableFor = now - lastTextChangeAt;
+        const nonEmpty = Boolean(normalizeText(currentText));
+
+        if (!dictationStillActive && !transcribing) {
+          if (changed && nonEmpty && stableFor >= 650) {
+            return { ok: true, active: true, transcriptChanged: true };
+          }
+          if (!changed && nonEmpty && now - startedAt >= 3500 && stableFor >= 1200) {
+            return { ok: true, active: true, transcriptChanged: false };
+          }
+        }
+        await wait(120);
+      }
+
+      showToast(tr(
+        "聽寫文字尚未完成，這次沒有加入佇列。請等待文字出現後再按一次。",
+        "The dictation transcript is not ready yet, so nothing was queued. Wait for the text to appear, then press the queue button again.",
+      ), { duration: 6200 });
+      return { ok: false, active: true, reason: "transcript-timeout" };
+    } finally {
+      state.dictationFinalizing = false;
+    }
   }
 
   function hasBusyEvidence() {
@@ -815,9 +998,12 @@
     }
   }
 
-  function resetResponseMonitor({ keepBusy = false } = {}) {
+  function resetResponseMonitor({ keepBusy = false, preserveCycle = false } = {}) {
     const monitor = state.responseMonitor;
     const counts = getConversationCounts();
+    const previousStartedAt = Number(monitor.cycleStartedAt) || 0;
+    const previousLastCompletedAt = Number(monitor.lastCompletedAt) || 0;
+    const busyNow = keepBusy && hasBusyEvidence();
     monitor.initialized = true;
     monitor.path = location.pathname;
     monitor.lastUserCount = counts.user;
@@ -825,18 +1011,25 @@
     monitor.lastAssistantSignature = getLastAssistantSignature();
     monitor.pendingUser = false;
     monitor.pendingUserAt = 0;
-    monitor.active = keepBusy && hasBusyEvidence();
+    monitor.active = Boolean(busyNow);
     monitor.activitySeen = monitor.active;
     monitor.assistantSeen = false;
     monitor.stableIdleTicks = 0;
-    monitor.cycleStartedAt = monitor.active ? Date.now() : 0;
+    monitor.cycleStartedAt = preserveCycle && previousStartedAt
+      ? previousStartedAt
+      : (monitor.active ? Date.now() : 0);
     monitor.lastAssistantChangeAt = monitor.active ? Date.now() : 0;
+    monitor.lastCompletedAt = preserveCycle ? previousLastCompletedAt : 0;
   }
 
   function responseMonitorTick() {
     const monitor = state.responseMonitor;
     if (!monitor.initialized || monitor.path !== location.pathname) {
-      resetResponseMonitor({ keepBusy: true });
+      const previousConversationId = getConversationId(monitor.path);
+      const nextConversationId = getConversationId(location.pathname);
+      const draftRouteBecameConversation = !previousConversationId && Boolean(nextConversationId);
+      const preserveCycle = draftRouteBecameConversation && Boolean(monitor.cycleStartedAt || monitor.pendingUser || monitor.active);
+      resetResponseMonitor({ keepBusy: true, preserveCycle });
       return;
     }
 
@@ -852,12 +1045,16 @@
       monitor.pendingUser = true;
       monitor.pendingUserAt = now;
       monitor.stableIdleTicks = 0;
+      // A new user turn is the authoritative start of a new generation cycle. Once set,
+      // ordinary UI actions/rerenders must not reset this timestamp.
+      monitor.cycleStartedAt = now;
+      monitor.lastCompletedAt = 0;
     }
 
     if (busy) {
       if (!monitor.active) {
         monitor.active = true;
-        monitor.cycleStartedAt = now;
+        if (!monitor.cycleStartedAt) monitor.cycleStartedAt = now;
       }
       monitor.activitySeen = true;
       monitor.stableIdleTicks = 0;
@@ -890,8 +1087,8 @@
           monitor.activitySeen = false;
           monitor.assistantSeen = false;
           monitor.stableIdleTicks = 0;
-          monitor.cycleStartedAt = 0;
           monitor.lastAssistantChangeAt = 0;
+          monitor.lastCompletedAt = now;
           notifyResponseCompleted();
         }
       } else {
@@ -1303,7 +1500,11 @@
     state.scheduleLongPressTimer = setTimeout(() => {
       state.scheduleLongPressTimer = null;
       state.scheduleLongPressTriggered = true;
-      void openSchedulePanel();
+      void (async () => {
+        const dictation = await finishDictationBeforeQueue();
+        if (!dictation.ok) return;
+        await openSchedulePanel();
+      })();
     }, SCHEDULE_LONG_PRESS_MS);
   }
 
@@ -1318,7 +1519,7 @@
       event.stopPropagation();
       return;
     }
-    addCurrentComposerToQueue();
+    void addCurrentComposerToQueue();
   }
 
   function ensureQueueButton() {
@@ -1750,7 +1951,7 @@
     }
 
     if (action === "add-current") {
-      addCurrentComposerToQueue();
+      await addCurrentComposerToQueue();
       return;
     }
 
@@ -1897,17 +2098,20 @@
     return false;
   }
 
-  function addCurrentComposerToQueue() {
+  async function addCurrentComposerToQueue() {
+    const dictation = await finishDictationBeforeQueue();
+    if (!dictation.ok) return false;
+
     if (!queueScopeReadyForInput()) {
       showToast(tr("聊天室正在切換，請稍候再加入佇列。", "The conversation is switching. Wait a moment before adding to the queue."));
       void switchQueueScopeIfNeeded();
-      return;
+      return false;
     }
     const raw = getComposerText().trim();
     const messages = splitMessages(raw);
     if (!messages.length) {
       showToast(tr("輸入框沒有內容，無法加入佇列。", "The composer is empty, so nothing can be queued."));
-      return;
+      return false;
     }
     const added = addMessages(messages, raw);
     if (added.length > 0) {
@@ -1919,7 +2123,9 @@
         duration: 5000,
       });
       requestAutoRun();
+      return true;
     }
+    return false;
   }
 
   function addMessages(messages, rawTextForUndo = "", options = {}) {
@@ -2603,6 +2809,25 @@
         pausedReason: state.pausedReason,
         scopeKey: state.scopeKey,
         conversationId: getConversationId(),
+      };
+    },
+    getDictationStatus() {
+      return {
+        active: Boolean(getActiveDictationControl()),
+        finalizing: Boolean(state.dictationFinalizing),
+        hasCommitControl: Boolean(getDictationCommitButton()),
+        transcribing: Boolean(getTranscriptionIndicator()),
+      };
+    },
+    getGenerationStatus() {
+      const monitor = state.responseMonitor;
+      return {
+        active: Boolean(monitor.active),
+        startedAt: Number(monitor.cycleStartedAt) || 0,
+        assistantSeen: Boolean(monitor.assistantSeen),
+        pendingUser: Boolean(monitor.pendingUser),
+        lastAssistantChangeAt: Number(monitor.lastAssistantChangeAt) || 0,
+        lastCompletedAt: Number(monitor.lastCompletedAt) || 0,
       };
     },
   });

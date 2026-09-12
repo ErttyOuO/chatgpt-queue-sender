@@ -186,6 +186,9 @@ assert.equal(sentMessages[0].url, 'https://files.oaiusercontent.com/file/direct.
 assert.equal(sentMessages[0].accessToken, 'temporary-token');
 assert.equal(sentMessages[0].accountId, 'account-123');
 assert.ok(statusEvents.some((event) => event.type === 'cqs:direct-download-status' && /Download started/.test(event.detail?.message || '')), 'success status event missing');
+const structuredResult = await api.requestDirectDownload(citation, null);
+assert.equal(structuredResult?.ok, true, 'requestDirectDownload should return a structured success result for latest-file UI feedback');
+assert.equal(structuredResult?.filename, 'IAFM_Linux_RAG_啟動修復_20260910.zip');
 
 citation.nextElementSibling = null;
 const restoredButton = api.ensureDirectDownloadButton(citation);

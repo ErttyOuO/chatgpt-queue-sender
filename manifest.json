@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "0.8.9",
+  "version": "0.9.4",
   "description": "__MSG_extensionDescription__",
   "permissions": [
     "storage",
@@ -59,7 +59,8 @@
         "export/handoff-prompt.js",
         "export/custom-prompts.js",
         "export/direct-download.js",
-        "content.js"
+        "content.js",
+        "export/recent-files.js"
       ],
       "css": [
         "content.css",

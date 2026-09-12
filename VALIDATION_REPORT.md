@@ -1,135 +1,85 @@
-# Validation Report — v0.8.9
+# Validation Report — v0.9.4
 
 ## Scope
 
-v0.8.9 was developed directly from the completed v0.8.8 source tree. The new feature is a one-click Firefox download action beside ChatGPT assistant file-citation buttons, based on the current DOM shape that exposes `data-file-citation-primary-file-id`.
+v0.9.4 was developed directly from the v0.9.3 source package. The change is focused on download feedback in the compact vertical latest-file list below **Export & Transfer**; the existing queue, scheduling, direct-download, generated-image, ZIP Beta, dictation, and bilingual behavior were kept intact.
 
-## User-visible behavior
+## User-reported issue
 
-- The original ChatGPT filename button is unchanged and still opens the native preview.
-- A new compact download icon is injected immediately beside supported assistant file citations.
-- Clicking the injected icon does not click or navigate through the ChatGPT preview control.
-- The selected file is resolved through the existing ChatGPT attachment authorization logic and handed to Firefox's native download manager.
-- The button shows loading, success, and error states, and the existing local toast UI reports the result.
-- New citations inserted later by React are detected automatically.
-- If React removes only the injected sibling, it can be restored on the next matching mutation/scan.
-- Multi-file citation groups fail closed rather than silently downloading only the primary file.
-- User-side upload citations do not receive this assistant direct-download action.
+Clicking a file row could spend several seconds resolving ChatGPT attachment authorization before Firefox actually accepted the download. The latest-file row itself provided no persistent visual feedback, so a slow successful request looked identical to a failed or ignored click.
 
-## Download safety and authorization
+## v0.9.4 changes
 
-- File identity comes from `data-file-citation-primary-file-id` (or a single unambiguous file ID in citation-group metadata), not from filename text.
-- Page-side `resolveAttachment()` is used first so authorization is refreshed in the current ChatGPT page/session.
-- The background validates that the request came from a ChatGPT tab.
-- Download URLs are still constrained by the existing ChatGPT/OpenAI/oaiusercontent allowlist.
-- Firefox downloads use `conflictAction: "uniquify"` so an existing same-name file is not overwritten.
-- Filenames are sanitized before being passed to Firefox.
-- Same-origin ChatGPT download URLs retain the temporary authorization/account headers returned by the resolver; signed CDN URLs never receive the ChatGPT bearer token.
-- Firefox container/private-tab context is forwarded when available.
-- If an already-resolved signed URL is rejected immediately by the download API, the file ID is resolved once more before failure is returned.
+- Every latest-file row now reserves a status icon at the right edge.
+- Clicking a row immediately changes that icon to a spinner and preserves the loading state while the attachment is resolved.
+- The spinner remains visible for at least a short perceptible interval even when a native ChatGPT download button reacts immediately.
+- Successful direct downloads briefly show a green check after Firefox accepts the download request.
+- Failed resolution / download startup shows a red error icon; its tooltip preserves the detailed returned error text.
+- Download state is keyed by file identity (file ID, generated-image URL identity, or filename), so a React/UI rerender does not erase an in-progress state.
+- The recent-file UI now awaits a structured result from the existing direct-download module instead of indirectly clicking the injected adjacent CQS icon.
+- `requestDirectDownload()` now returns structured `{ ok, filename, downloadId/strategy/message }` data while preserving the existing adjacent-button behavior.
+- ChatGPT-native artifact rows still delegate to the original ChatGPT button. Their green check means the click was successfully delegated to ChatGPT, not that the browser has completed the native transfer.
+- No new permission, host permission, remote service, telemetry, or data collection was added.
 
-## Export compatibility
+## Why downloads can still succeed or fail intermittently
 
-The injected direct-download control is explicitly excluded from:
+The extension now makes the failure reason visible, but several external states can still affect a specific ChatGPT attachment:
 
-- Markdown conversion
-- visible attachment scanning used by conversation export / ZIP planning
-
-This prevents the new button from changing conversation text or becoming a duplicate archive attachment candidate.
-
-## Permission change
-
-v0.8.9 adds required Firefox API permission:
-
-```json
-"downloads"
-```
-
-It is used only after an explicit click on the direct-download action to start the selected ChatGPT file in Firefox's native download manager. No new host permissions, remote services, analytics, telemetry, or data collection are introduced.
+- A signed attachment URL can expire before Firefox starts it. The direct-download path already retries once through the available file ID when possible.
+- A newly generated artifact may be visible in the UI before all server-side attachment metadata / authorization is ready.
+- Older files can have revoked or expired authorization and may return HTTP 403/404 from ChatGPT/OpenAI storage.
+- Generic ChatGPT buttons may expose incomplete or ambiguous metadata; ambiguous matches intentionally fail closed rather than download the wrong file.
+- Firefox can reject a download request independently of ChatGPT resolution.
+- ChatGPT-native XPI/ZIP buttons are delegated to ChatGPT itself, so the extension can confirm the click handoff but cannot reliably prove the native transfer completed.
 
 ## Tests actually executed and passed
 
 ### `npm run check`
 
-Passed after the final runtime changes. This includes:
-
-- syntax checks for all existing runtime modules plus `export/direct-download.js`
-- Manifest v0.8.9 and content-script load-order checks
-- required `downloads` permission check
-- direct-download integration static guards
-- locale/i18n checks
+Passed after the v0.9.4 changes, including JavaScript syntax checks, manifest/static policy checks, locale checks, and new assertions for per-file loading/error feedback.
 
 ### `npm run test:pure`
 
-Passed after the feature was integrated. Existing regressions continued to pass for:
+Passed in full. This includes:
 
-- background behavior / persistent queue leases
-- ZIP archive planning
-- background attachment downloading
-- structured attachments
-- React attachment metadata
-- conversation/draft scope isolation
-- saved prompts and storage race protection
-- runtime i18n
-- v0.8.6 busy-state / composer safety
-- v0.8.7/v0.8.8 scheduled-send engine and unified manager
+- background simulation
+- archive selection simulation
+- archive background download simulation
+- structured attachment simulation
+- React attachment simulation
+- conversation/draft scope simulation
+- custom prompt and persistence-race simulations
+- i18n simulations
+- queue/composer safety simulation
+- one-time schedule background/content/manager simulations
+- direct-download simulations
+- recent-file simulations
+- dictation queue simulation
+- generation timer / generated-image simulation
 
-New direct-download simulations passed:
-
-```json
-{
-  "assistantOnlyInjection": true,
-  "exactFileIdFromCitation": true,
-  "adjacentButton": true,
-  "pageResolutionBeforeDownload": true,
-  "statusFeedback": true,
-  "reactRerenderRestore": true,
-  "multiFileGroupFailClosed": true
-}
-```
-
-Background direct-download simulations passed:
-
-```json
-{
-  "firefoxDownloadManager": true,
-  "noPreviewNavigation": true,
-  "safeFilename": true,
-  "invalidSenderBlocked": true,
-  "staleSignedUrlRefresh": true,
-  "sameOriginAuthorization": true,
-  "firefoxContainerContext": true
-}
-```
+The updated direct-download tests confirm that `requestDirectDownload()` returns a structured success result for the recent-file UI. The updated native-artifact test confirms that rail clicks return delegated success feedback while still using the original ChatGPT button. The latest-file CSS regression confirms loading spinner and error-state styling are present.
 
 ### `npm run prepare:lint`
 
-Passed and staged the runtime extension, including the new direct-download module.
+Executed successfully before packaging to create the runtime-only staging directory.
 
-## Tests attempted but not completed in this environment
+## Dependency / jsdom / addons-linter status
 
-`npm ci` was attempted for 90 seconds but did not complete. A partial `node_modules` tree was created and then the install process was terminated. The partial install did not contain a usable jsdom package entry point or Mozilla addons-linter executable.
+`npm ci` was attempted again in this environment. It did not complete within the available execution window and had to be terminated; a partially created `node_modules` directory was removed before packaging.
 
-The following commands were then explicitly attempted and failed because the incomplete jsdom installation could not be imported:
+Therefore the following are **not claimed as passed** in this environment:
 
-- `npm run test:dom`
-- `npm run test:export`
-- `npm run test:handoff`
+- jsdom DOM suite
+- jsdom export integration
+- jsdom handoff integration
+- Mozilla `addons-linter`
+- complete `npm run verify`
 
-Mozilla `addons-linter` was not available, so `npm run lint:amo` and complete `npm run verify` are **not claimed as passed**.
+## Real Firefox checks still recommended
 
-## Still requires real Firefox / ChatGPT verification
+1. Click a file row whose authorization takes several seconds and confirm the right-side spinner remains visible until the request returns.
+2. Confirm successful direct download shows a green check after Firefox accepts it.
+3. Force an expired / unavailable attachment and confirm the red error icon appears and its tooltip contains the resolver/download error.
+4. Click a ChatGPT-native XPI/ZIP artifact and confirm the short spinner changes to delegated-success feedback without a duplicate adjacent icon.
+5. Confirm React rerenders do not clear a currently loading row.
 
-1. Load the v0.8.9 XPI in Firefox.
-2. Open a current ChatGPT assistant reply containing a file citation matching the provided DOM structure.
-3. Confirm the download icon appears immediately to the right of the filename and does not change the original filename click behavior.
-4. Click the new icon and confirm the file begins downloading without opening the preview page / three-dot menu.
-5. Test ZIP, XPI, Markdown, document, and another generated file type if available.
-6. Test a duplicate filename and confirm Firefox creates a unique filename.
-7. Generate a new file after the page is already open and confirm the icon appears after the React update.
-8. Confirm Markdown and complete-ZIP export do not include the injected UI as extra text/attachments.
-9. Run Mozilla addons-linter in a fully installed development environment before AMO submission.
-
-## Risk assessment
-
-The implementation intentionally reuses the already-hardened ChatGPT attachment resolver rather than inventing a second download-resolution path. The main remaining compatibility risk is future ChatGPT DOM changes to file-citation attributes or assistant-turn structure. The original ChatGPT file control is never replaced, so a DOM compatibility failure should remove only the convenience button rather than break the native preview/download workflow.

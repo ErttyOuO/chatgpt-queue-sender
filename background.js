@@ -839,7 +839,10 @@
     const headers = directDownloadHeaders(resolved);
     if (headers.length) options.headers = headers;
     if (sender?.tab?.incognito) options.incognito = true;
-    if (typeof sender?.tab?.cookieStoreId === "string" && sender.tab.cookieStoreId) options.cookieStoreId = sender.tab.cookieStoreId;
+    // Do not pass cookieStoreId without the Firefox cookies permission. Firefox already
+    // uses the normal browsing cookie store when cookieStoreId is omitted, while passing
+    // even "firefox-default" explicitly causes downloads.download() to reject with
+    // "No permission for cookieStoreId" for this extension.
     return options;
   }
 

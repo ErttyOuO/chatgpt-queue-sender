@@ -1,10 +1,10 @@
 {
   "name": "chatgpt-queue-sender-firefox",
-  "version": "0.8.9",
+  "version": "0.9.4",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check i18n.js && node --check export/markdown-converter.js && node --check export/zip-writer.js && node --check export/conversation-export.js && node --check export/conversation-api.js && node --check export/archive-export.js && node --check export/handoff-prompt.js && node --check export/custom-prompts.js && node --check export/direct-download.js && node --check content.js && node --check background.js && node --check popup/popup.js && node tests/static-check.mjs && node tests/i18n-simulation.mjs && node tests/i18n-runtime-simulation.mjs",
+    "check": "node --check i18n.js && node --check export/markdown-converter.js && node --check export/zip-writer.js && node --check export/conversation-export.js && node --check export/conversation-api.js && node --check export/archive-export.js && node --check export/handoff-prompt.js && node --check export/custom-prompts.js && node --check export/direct-download.js && node --check export/recent-files.js && node --check content.js && node --check background.js && node --check popup/popup.js && node tests/static-check.mjs && node tests/i18n-simulation.mjs && node tests/i18n-runtime-simulation.mjs",
     "test:dom": "node tests/dom-simulation.mjs",
     "test:background": "node tests/background-simulation.mjs",
     "lint:amo": "npm run prepare:lint && addons-linter --self-hosted --output=json dist/extension",
@@ -20,13 +20,16 @@
     "test:i18n": "node tests/i18n-simulation.mjs",
     "test:i18n-runtime": "node tests/i18n-runtime-simulation.mjs",
     "prepare:lint": "node scripts/prepare-lint-dir.mjs",
-    "test:pure": "npm run test:background && npm run test:archive && npm run test:download && npm run test:structured && npm run test:react && npm run test:scope && npm run test:prompts && npm run test:prompts-race && npm run test:i18n && npm run test:i18n-runtime && npm run test:safety && npm run test:schedule && npm run test:direct-download",
+    "test:pure": "npm run test:background && npm run test:archive && npm run test:download && npm run test:structured && npm run test:react && npm run test:scope && npm run test:prompts && npm run test:prompts-race && npm run test:i18n && npm run test:i18n-runtime && npm run test:safety && npm run test:schedule && npm run test:direct-download && npm run test:recent-files && npm run test:dictation && npm run test:generation-media",
     "test:unit": "npm run test:pure && npm run test:export && npm run test:handoff",
     "verify": "npm run check && npm run test:unit && npm run test:dom && npm run lint:amo",
     "test:safety": "node tests/composer-safety-simulation.mjs",
     "test:schedule": "node tests/schedule-background-simulation.mjs && node tests/schedule-content-simulation.mjs && node tests/schedule-manager-ui-simulation.mjs",
     "test:schedule-manager": "node tests/schedule-manager-ui-simulation.mjs",
-    "test:direct-download": "node tests/direct-download-simulation.mjs && node tests/direct-download-background-simulation.mjs"
+    "test:direct-download": "node tests/direct-download-simulation.mjs && node tests/direct-download-generic-buttons.mjs && node tests/direct-download-background-simulation.mjs",
+    "test:recent-files": "node tests/recent-files-simulation.mjs && node tests/recent-native-downloads-simulation.mjs && node tests/recent-files-layout-simulation.mjs",
+    "test:dictation": "node tests/dictation-queue-simulation.mjs",
+    "test:generation-media": "node tests/generation-timer-images-simulation.mjs"
   },
   "devDependencies": {
     "jsdom": "26.1.0",

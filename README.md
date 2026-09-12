@@ -6,7 +6,7 @@
 **Firefox 上的 ChatGPT 訊息佇列助手**  
 先排好提示詞，等待上一則回覆真正完成後，再安全地自動送出下一則。
 
-[![Version](https://img.shields.io/badge/version-0.8.9-2f81f7)](#版本資訊)
+[![Version](https://img.shields.io/badge/version-0.9.4-2f81f7)](#版本資訊)
 [![Firefox Add-ons](https://img.shields.io/badge/Firefox%20Add--ons-Install-FF7139?logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)
 [![Firefox](https://img.shields.io/badge/Firefox-140%2B-FF7139?logo=firefoxbrowser&logoColor=white)](#安裝)
 [![Manifest](https://img.shields.io/badge/Manifest-V3-555)](./manifest.json)
@@ -41,6 +41,7 @@ ChatGPT Queue Sender 會在 ChatGPT 輸入框的 **「+」旁邊**加入一個�
 | 📝 Markdown 匯出 | 匯出目前顯示的對話分支 |
 | 📦 完整 ZIP 封存 | Markdown + 使用者上傳 + ChatGPT 提供檔案 + 匯出報告 |
 | ⬇️ GPT 檔案直接下載 | ChatGPT 提供的檔案連結旁直接顯示下載按鈕，不必先開預覽再進三點選單 |
+| 🗃️ 最新檔案列／生成計時 | 「匯出與轉移」下方顯示最新回覆檔案；沒有檔案且仍在生成時顯示經過時間 |
 | 🔁 對話交接 | 產生可帶到新聊天室使用的結構化交接摘要 |
 | 🌐 中英文介面 | 中文 Firefox 顯示中文，其他 Firefox 語言預設英文 |
 
@@ -66,6 +67,54 @@ flowchart LR
 特別是在程式開發、工具執行或長回答中，ChatGPT 有時會先恢復 Send 按鈕，但背景工作仍在繼續。v0.8.6 加入更保守的完成判定，降低下一則訊息提早打斷工作的風險。
 
 ---
+
+## v0.9.4 檔案下載狀態回饋
+
+最新檔案清單的每一列右側現在都有自己的下載狀態。點擊後會立即顯示旋轉中的載入圖示，並持續到附件解析與下載啟動流程回傳結果；因此 signed URL 重新解析或附件授權需要數秒時，畫面不會再像沒有反應。
+
+- `旋轉圖示`：正在解析檔案／準備下載。
+- `綠色勾勾`：已成功交給 Firefox 下載管理器，或已委派給 ChatGPT 原生下載按鈕。
+- `紅色驚嘆號`：解析或啟動失敗；停留在圖示上可看到實際錯誤原因。
+
+狀態以 file ID / URL / 檔名身份保存，因此 React 重繪最新檔案列時，正在下載的 spinner 不會因 DOM 重建而突然消失。對 ChatGPT 原生下載按鈕，勾勾只表示「已交給 ChatGPT 原生下載」，不宣稱瀏覽器已完成傳輸。
+
+## v0.9.3 最新檔案改為直向排列
+
+多檔案不再使用橫向 chip 列。現在「匯出與轉移」下方會讓每個最新檔案各占一列，由上往下排列；檔案格式色框、短檔名、完整 tooltip 與點擊下載行為都維持不變。
+
+為避免一次出現很多檔案時遮住過多聊天內容，檔案區保持窄寬度，約超過 5 列後只在檔案區內做垂直捲動；不再出現橫向捲動。
+
+## v0.9.2 圖片答案與不中斷生成計時
+
+v0.9.2 將 ChatGPT 產生的圖片答案也整合到「匯出與轉移」下方的最新內容列。像 `backend-api/estuary/content?id=file_...` 的 assistant 圖片會顯示成 `IMG` 卡片，可直接透過 Firefox 下載；相同 file ID 會與其他附件來源去重。
+
+生成計時也改為以「本輪 user 訊息」作為唯一開始點。同一輪後續 Thinking、工具執行、檔案整理或 UI 重繪都不會把時間歸零；新聊天室從 draft 路徑轉成正式 conversation 時也會保留原本起點。若 ChatGPT 把「整理檔案／處理文件」等狀態顯示在 assistant turn 外的左上工作區，插件也會把它視為同一輪生成並繼續顯示計時。
+
+## v0.9.1 原生下載整合與聽寫後加入佇列
+
+v0.9.1 把 ChatGPT 自己就能直接下載的產物按鈕也整合進「匯出與轉移」下方的最新檔案列，例如：
+
+- `Firefox／AMO XPI v0.9.0`
+- `完整原始碼 ZIP v0.9.0`
+- `GitHub-ready 原始碼 ZIP`
+
+這類原生按鈕不會再額外插入一顆下載 icon。最新檔案卡被點擊時，會直接委派給 ChatGPT 原本的下載按鈕，因此正文保持乾淨，但所有最新產物仍集中在同一個地方取得。
+
+另外，若使用者正在使用 ChatGPT 聽寫，短按「加入佇列」會先完成聽寫並等待轉錄文字穩定出現在 composer，再加入佇列；長按設定單次定時發送也使用同一層保護。若轉錄長時間未完成，擴充功能會停止本次加入動作，而不是把不完整文字排進佇列。
+
+## v0.9.0 最新檔案列與生成計時
+
+「匯出與轉移」控制下方新增一條很小的最新活動列，只追蹤**目前最新 assistant 回覆**：
+
+- 偵測到可下載檔案時，每個檔案各占一列並由上往下排列；超過可視高度時只在檔案區內垂直捲動。
+- 檔案格式是第一視覺：PDF 紅框、Markdown 白／淺灰框、DOC/DOCX 藍框、試算表綠框、簡報橘框、ZIP/XPI 等封存檔紫框。
+- 卡片會保留 `PDF`、`MD`、`DOCX` 等格式文字；長檔名只顯示縮短版本，完整名稱仍保留在 tooltip / aria-label。
+- 點擊卡片會沿用直接下載流程，不需要先打開 ChatGPT 原生檔案預覽。
+- 如果這一輪回覆正在生成、但尚未偵測到目前回覆的下載檔案，同一位置改顯示 `生成中 00:37` 計時。
+- 送出新問題後，上一輪回覆的檔案不會繼續冒充「最新檔案」；在新 assistant turn 尚未出現時會優先顯示本輪計時。
+- 生成完成且本輪有檔案時，最新檔案卡會繼續保留，直到下一輪回覆成為最新內容。
+
+此功能不新增權限，直接沿用既有的 `downloads` 權限與 v0.8.10 直接下載安全流程。
 
 ## v0.8.6 重點改進
 
@@ -118,7 +167,7 @@ ChatGPT Queue Sender 已正式上架 Firefox Add-ons，可直接從 Mozilla 官�
 
 **[🦊 前往 Firefox Add-ons 安裝 ChatGPT 佇列發送/批次發送](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)**
 
-Firefox Add-ons 目前已上架版本：**v0.8.6**；此 repository 的 v0.8.9 需另外提交 Mozilla 審核後才會同步到商店。
+Firefox Add-ons 目前公開版本可能落後於此 repository；v0.9.4 需另外提交 Mozilla 審核後才會同步到商店。
 
 安裝後開啟或重新整理：
 
@@ -267,7 +316,7 @@ v0.8.7 起 `notifications` 為必要權限，用來保證定時發送可以回�
 
 ## GPT 提供檔案直接下載
 
-從 v0.8.9 開始，ChatGPT 回覆中的檔案引用旁會多一顆小型下載按鈕。
+從 v0.8.9 開始，ChatGPT 回覆中的檔案引用旁會多一顆小型下載按鈕；v0.8.10 進一步支援沒有 `data-file-citation-*`、但使用 `library-file-icon` 的一般檔案按鈕。
 
 原本的檔名按鈕完全保留：
 
@@ -279,7 +328,7 @@ v0.8.7 起 `notifications` 為必要權限，用來保證定時發送可以回�
 此功能只注入到 **ChatGPT assistant 回覆中的檔案引用**；使用者自己的上傳引用不會被額外加上這顆按鈕。直接下載按鈕本身也會被 Markdown／ZIP 匯出器排除，不會污染聊天原文或造成附件重複。
 
 > [!NOTE]
-> v0.8.9 新增 Firefox `downloads` 權限，用途只有在使用者明確點擊這顆下載按鈕時，將選定檔案交給 Firefox 原生下載管理器。
+> v0.8.9 起使用 Firefox `downloads` 權限，用途只有在使用者明確點擊這顆下載按鈕時，將選定檔案交給 Firefox 原生下載管理器。v0.8.10 不新增 `cookies` 權限，並修正一般 Firefox cookie store 被錯誤傳入下載 API 的問題。
 
 ---
 
@@ -479,7 +528,7 @@ npm run lint:amo
 | [CHANGELOG.md](./CHANGELOG.md) | 版本變更紀錄 |
 | [FIREFOX_STORE_LISTING.md](./FIREFOX_STORE_LISTING.md) | Firefox Add-ons 商店文案與權限說明 |
 | [AMO_UPLOAD_NOTES.md](./AMO_UPLOAD_NOTES.md) | AMO 上傳注意事項 |
-| [VALIDATION_REPORT.md](./VALIDATION_REPORT.md) | v0.8.9 驗證報告 |
+| [VALIDATION_REPORT.md](./VALIDATION_REPORT.md) | v0.9.2 驗證報告 |
 
 ---
 
@@ -504,12 +553,18 @@ npm run lint:amo
 
 ## 版本資訊
 
-目前版本：**v0.8.9**  
+目前版本：**v0.9.4**  
 Firefox Add-ons：**已正式上架** — [前往官方商店安裝](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)  
-目前 repository / source 為 **v0.8.9**；商店版需在 v0.8.9 上傳並通過 Mozilla 審核後才會同步。
+目前 repository / source 為 **v0.9.4**；商店版需在新版上傳並通過 Mozilla 審核後才會同步.
 
 近期重點：
 
+- **v0.9.4** — 最新檔案列新增逐檔下載 spinner、成功勾勾、失敗圖示與錯誤提示
+- **v0.9.3** — 最新檔案列改為直向堆疊；移除橫向捲動，過多檔案改為區塊內垂直捲動
+- **v0.9.2** — 生成圖片加入最新內容列；同一輪生成／整理檔案狀態不再重置計時
+- **v0.9.1** — 原生 XPI／ZIP 等產物按鈕整合進最新檔案列；聽寫中按加入佇列會先完成轉錄再排入
+- **v0.9.0** — 「匯出與轉移」下新增最新檔案列；以格式色框快速辨識 PDF／MD／DOCX 等檔案，無檔案且回覆仍在生成時顯示計時
+- **v0.8.10** — 修正 Firefox `cookieStoreId` 下載權限錯誤，並支援沒有 citation attributes 的 `library-file-icon` 檔案按鈕
 - **v0.8.9** — ChatGPT 提供檔案的引用旁新增直接下載按鈕，略過原生預覽／三點下載流程
 - **v0.8.8** — 定時訊息改與一般佇列顯示在同一個右下角管理抽屜；長按面板只負責設定時間
 - **v0.8.7** — 新增長按「加入佇列」的一次性定時發送、背景 alarm、成功／失敗通知與聊天室綁定防誤送

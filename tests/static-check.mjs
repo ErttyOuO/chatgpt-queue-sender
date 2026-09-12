@@ -17,6 +17,7 @@ const files = {
   'handoff-prompt.js': fs.readFileSync(path.join(root, 'export', 'handoff-prompt.js'), 'utf8'),
   'custom-prompts.js': fs.readFileSync(path.join(root, 'export', 'custom-prompts.js'), 'utf8'),
   'direct-download.js': fs.readFileSync(path.join(root, 'export', 'direct-download.js'), 'utf8'),
+  'recent-files.js': fs.readFileSync(path.join(root, 'export', 'recent-files.js'), 'utf8'),
 };
 
 const failures = [];
@@ -25,7 +26,7 @@ const assert = (condition, message) => {
 };
 
 assert(manifest.manifest_version === 3, 'manifest_version must be 3');
-assert(manifest.version === '0.8.9', 'manifest version must be 0.8.9');
+assert(manifest.version === '0.9.4', 'manifest version must be 0.9.4');
 assert(manifest.default_locale === 'en', 'default locale must be English for non-Chinese Firefox locales');
 assert(manifest.name === '__MSG_extensionName__', 'manifest name must use locale messages');
 assert(manifest.description === '__MSG_extensionDescription__', 'manifest description must use locale messages');
@@ -57,7 +58,7 @@ for (const file of [
   'i18n.js', '_locales/en/messages.json', '_locales/zh_TW/messages.json', '_locales/zh_CN/messages.json',
   'popup/popup.html', 'popup/popup.css', 'popup/popup.js', 'background.js',
   'export/markdown-converter.js', 'export/zip-writer.js', 'export/conversation-export.js', 'export/conversation-api.js', 'export/archive-export.js',
-  'export/handoff-prompt.js', 'export/custom-prompts.js', 'export/direct-download.js', 'export/export-ui.css',
+  'export/handoff-prompt.js', 'export/custom-prompts.js', 'export/direct-download.js', 'export/recent-files.js', 'export/export-ui.css',
 ]) {
   assert(fs.existsSync(path.join(root, file)), `missing packaged file: ${file}`);
 }
@@ -74,6 +75,7 @@ const expectedOrder = [
   'export/custom-prompts.js',
   'export/direct-download.js',
   'content.js',
+  'export/recent-files.js',
 ];
 assert(JSON.stringify(contentEntry?.js) === JSON.stringify(expectedOrder), 'content script load order is incorrect');
 assert(contentEntry?.css?.includes('export/export-ui.css'), 'export UI CSS is missing');
@@ -103,6 +105,7 @@ const zipJs = files['zip-writer.js'];
 const handoffJs = files['handoff-prompt.js'];
 const customPromptsJs = files['custom-prompts.js'];
 const directDownloadJs = files['direct-download.js'];
+const recentFilesJs = files['recent-files.js'];
 const backgroundJs = files['background.js'];
 const popupJs = files['popup.js'];
 const exportCss = fs.readFileSync(path.join(root, 'export', 'export-ui.css'), 'utf8');
@@ -212,6 +215,10 @@ assert(backgroundJs.includes('notifications.create'), 'system notification creat
 assert(backgroundJs.includes('notifications.onClicked.addListener'), 'notification click handling is missing');
 assert(popupJs.includes('ensureNotificationPermission'), 'notification permission compatibility handling is missing');
 assert(directDownloadJs.includes('data-file-citation-primary-file-id'), 'assistant file-citation direct-download selector is missing');
+assert(directDownloadJs.includes("svg[data-testid='library-file-icon']"), 'generic ChatGPT library-file-icon button detection is missing');
+assert(directDownloadJs.includes('inspectReactFileMetadata'), 'generic file buttons must inspect React file metadata');
+assert(directDownloadJs.includes('collectAttachments'), 'generic file buttons need structured conversation fallback');
+assert(directDownloadJs.includes('chooseStructuredAttachment'), 'structured attachment matching helper is missing');
 assert(directDownloadJs.includes('CQS_DIRECT_DOWNLOAD'), 'direct-download background message dispatch is missing');
 assert(directDownloadJs.includes('getDownloadContext'), 'direct-download auth/session context is missing');
 assert(directDownloadJs.includes('resolveAttachment'), 'direct-download fresh file resolution is missing');
@@ -221,10 +228,41 @@ assert(backgroundJs.includes('api.downloads.download'), 'Firefox downloads API i
 assert(backgroundJs.includes('conflictAction: "uniquify"'), 'direct downloads must avoid overwriting existing files');
 assert(backgroundJs.includes('saveAs: false'), 'direct downloads must not open the preview/save-as flow');
 assert(backgroundJs.includes('safeDirectDownloadFilename'), 'direct-download filename sanitization is missing');
+assert(!backgroundJs.includes('options.cookieStoreId = sender.tab.cookieStoreId'), 'direct download must not pass cookieStoreId without the cookies permission');
 assert(apiJs.includes('getDownloadContext'), 'conversation API download context helper is missing');
 assert(files['markdown-converter.js'].includes('.cqs-direct-download-button'), 'direct-download button must be excluded from Markdown export');
 assert(exportJs.includes('[data-cqs-direct-download]'), 'direct-download UI must be excluded from attachment export scanning');
 assert(contentJs.includes('cqs:direct-download-status'), 'direct-download toast bridge is missing');
+assert(contentJs.includes('getGenerationStatus()'), 'generation status API for the recent-file timer is missing');
+assert(recentFilesJs.includes('MAX_VISIBLE_FILES = 8'), 'latest-file rail item cap is missing');
+assert(recentFilesJs.includes('collectLatestButtons'), 'latest assistant file collection is missing');
+assert(recentFilesJs.includes('generation.active && !generation.assistantSeen'), 'previous-response files must be suppressed before the new assistant turn appears');
+assert(recentFilesJs.includes('formatElapsed'), 'generation elapsed timer formatting is missing');
+assert(contentJs.includes('monitor.cycleStartedAt = now;'), 'new-user generation cycle start tracking is missing');
+assert(contentJs.includes('if (!monitor.cycleStartedAt) monitor.cycleStartedAt = now;'), 'same-cycle busy re-entry must preserve the original generation start');
+assert(contentJs.includes('isLikelyFileWorkText'), 'global file-organization work detection is missing');
+assert(recentFilesJs.includes('fallbackGenerationStartedAt'), 'fallback generation timer must keep a stable start time');
+assert(recentFilesJs.includes('collectLatestImages'), 'generated assistant image collection is missing');
+assert(recentFilesJs.includes('assistant-generated-image'), 'generated assistant image download metadata is missing');
+assert(recentFilesJs.includes('#ff453a') && recentFilesJs.includes('#f2f2f7') && recentFilesJs.includes('#0a84ff'), 'PDF/Markdown/DOCX first-impression outline colors are missing');
+assert(recentFilesJs.includes('requestDirectDownload'), 'latest-file rows must await the direct-download result for status feedback');
+assert(recentFilesJs.includes('collectNativeDownloadButtons'), 'native ChatGPT artifact buttons must join the latest-file rail');
+assert(recentFilesJs.includes('isNativeDownloadButton'), 'native download classification is missing');
+assert(recentFilesJs.includes('entry.nativeDownload'), 'latest-file rail must delegate native artifact downloads to ChatGPT');
+assert(contentJs.includes("button[aria-label='Submit dictation']"), 'Submit dictation selector is missing');
+assert(contentJs.includes('finishDictationBeforeQueue'), 'dictation finalization guard is missing');
+assert(contentJs.includes('dictationFinalizing'), 'dictation finalization lock is missing');
+assert(exportCss.includes('.cqs-recent-file-chip'), 'latest-file rail styling is missing');
+assert(exportCss.includes('.cqs-generation-timer'), 'generation timer styling is missing');
+assert(exportCss.includes('flex-direction: column'), 'latest-file list must stack files vertically');
+assert(exportCss.includes('overflow-x: hidden'), 'latest-file list must not scroll horizontally');
+assert(exportCss.includes('overflow-y: auto'), 'latest-file list vertical overflow handling is missing');
+assert(recentFilesJs.includes('downloadStates: new Map()'), 'per-file download feedback state is missing');
+assert(recentFilesJs.includes('minimumSpinnerMs = 520'), 'latest-file click must show a perceptible loading state');
+assert(recentFilesJs.includes('cqs-recent-file-status'), 'latest-file status indicator rendering is missing');
+assert(exportCss.includes('cqs-recent-download-spin'), 'latest-file spinner animation is missing');
+assert(exportCss.includes('data-cqs-download-state="error"'), 'latest-file error-state styling is missing');
+assert(directDownloadJs.includes('requestDirectDownload,'), 'direct-download API must expose structured request results to the latest-file UI');
 
 assert(contentJs.includes('cqs-item-scheduled'), 'scheduled messages must render in the normal queue manager');
 assert(contentJs.includes('copy-scheduled-item'), 'scheduled-message copy action is missing from the queue manager');
