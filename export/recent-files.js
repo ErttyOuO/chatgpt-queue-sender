@@ -56,7 +56,7 @@
       powerpoint: "pptx", ppt: "ppt", pptx: "pptx", json: "json", csv: "csv",
       image: "img", audio: "audio", video: "video",
     };
-    return known[key] || (/^[a-z0-9]{1,8}$/.test(key) ? key : "");
+    return known[key] || "";
   }
 
   function labelExtension(value) {
@@ -380,7 +380,7 @@
     const task = (async () => {
       const immediate = immediateEntry(button);
       if (!immediate) return null;
-      if (fileExtension(immediate.name) || immediate.nativeDownload) {
+      if (immediate.nativeDownload || immediate.metadata?.hasIdentity) {
         state.resolved.set(button, immediate);
         return immediate;
       }
@@ -406,6 +406,8 @@
           name: resolvedName || immediate.name,
           extension: fileExtension(resolvedName) || immediate.extension,
           resolvable: Boolean(built?.ref),
+          downloadRef: built?.ref ? { ...built.ref } : null,
+          structured: built?.structured || null,
         };
         state.resolved.set(button, value);
         return value;
@@ -542,7 +544,9 @@
     if (!directApi?.requestDirectDownload) {
       return { ok: false, message: tr("直接下載元件尚未準備完成。", "Direct download is not ready.") };
     }
-    return directApi.requestDirectDownload(entry.button, null);
+    return directApi.requestDirectDownload(entry.button, null, entry.downloadRef
+      ? { metadata: entry.metadata || {}, ref: { ...entry.downloadRef }, structured: entry.structured || null }
+      : null);
   }
 
   function renderFiles(host, entries, totalCount) {
@@ -638,7 +642,7 @@
 
     const imageEntries = images.map(imageEntry).filter(Boolean);
     const immediate = dedupeEntries([
-      ...buttons.map(immediateEntry).filter(Boolean),
+      ...buttons.map(immediateEntry).filter((entry) => entry && (entry.nativeDownload || entry.resolvable)),
       ...imageEntries,
     ]);
     const hasImmediate = immediate.length > 0;
@@ -655,8 +659,13 @@
     const still = collectLatestButtons();
     if (still.buttons.length !== buttons.length || still.buttons.some((button, index) => button !== buttons[index])) return;
     if ((still.images || []).length !== images.length || (still.images || []).some((image, index) => image !== images[index])) return;
-    const resolved = dedupeEntries([...resolvedButtons, ...imageEntries]);
-    renderFiles(host, resolved, resolved.length);
+    const resolved = dedupeEntries([
+      ...resolvedButtons.filter((entry) => entry && (entry.nativeDownload || entry.resolvable)),
+      ...imageEntries,
+    ]);
+    if (resolved.length) renderFiles(host, resolved, resolved.length);
+    else if (still.generation?.active) renderTimer(host, still.generation);
+    else hideHost(host);
   }
 
   function scheduleRefresh(delay = 90) {
@@ -691,6 +700,7 @@
   window.__CQS_RECENT_FILES__ = Object.freeze({
     cleanFilename,
     fileExtension,
+    iconExtension,
     labelExtension,
     isNativeDownloadButton,
     collectNativeDownloadButtons,

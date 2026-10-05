@@ -84,10 +84,21 @@
     return Boolean(button?.querySelector?.(LIBRARY_FILE_ICON_SELECTOR));
   }
 
+  function libraryIconExtension(button) {
+    const key = normalizeText(button?.querySelector?.(LIBRARY_FILE_ICON_SELECTOR)?.getAttribute?.("data-library-file-icon-key")).toLowerCase();
+    const known = {
+      pdf: "pdf", zip: "zip", markdown: "md", md: "md", text: "txt",
+      word: "docx", doc: "doc", docx: "docx", spreadsheet: "xlsx", xls: "xls", xlsx: "xlsx",
+      powerpoint: "pptx", ppt: "ppt", pptx: "pptx", json: "json", csv: "csv",
+      image: "img", audio: "audio", video: "video",
+    };
+    return known[key] || "";
+  }
+
   function isLikelyFileButton(button) {
     if (!button || String(button.tagName || "").toUpperCase() !== "BUTTON") return false;
     if (button.matches?.("[data-cqs-direct-download]")) return false;
-    return Boolean(button.matches?.(CITATION_SELECTOR) || hasLibraryFileIcon(button));
+    return Boolean(button.matches?.(CITATION_SELECTOR) || (hasLibraryFileIcon(button) && libraryIconExtension(button)));
   }
 
   function getTurnMessageId(button) {
@@ -145,6 +156,36 @@
     return stripDownloadPrefix(value).toLowerCase().replace(/[\s_-]+/g, " ").trim();
   }
 
+  function filenameExtension(value) {
+    const clean = stripDownloadPrefix(value).split(/[\\/]/).at(-1) || "";
+    const match = clean.match(/\.([A-Za-z0-9][A-Za-z0-9+_-]{0,11})$/);
+    const ext = match?.[1]?.toLowerCase() || "";
+    return /^\d+$/.test(ext) && ext !== "7z" ? "" : ext;
+  }
+
+  function normalizedFilenameStem(value) {
+    const clean = stripDownloadPrefix(value);
+    const ext = filenameExtension(clean);
+    const stem = ext ? clean.slice(0, -(ext.length + 1)) : clean;
+    return stem.toLowerCase().replace(/[\s_.-]+/g, " ").replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function compatibleExtension(button, attachment) {
+    const expected = libraryIconExtension(button) || filenameExtension(citationFilename(button));
+    if (!expected || ["img", "audio", "video"].includes(expected)) return true;
+    const actual = filenameExtension(attachment?.resolvedFileName || attachment?.name || "");
+    if (!actual) return true;
+    const families = [
+      new Set(["md", "markdown", "txt"]),
+      new Set(["doc", "docx", "docm", "odt", "rtf"]),
+      new Set(["xls", "xlsx", "xlsm", "ods", "csv", "tsv"]),
+      new Set(["ppt", "pptx", "pptm", "odp"]),
+      new Set(["jpg", "jpeg", "png", "webp", "gif", "svg", "img"]),
+    ];
+    if (expected === actual) return true;
+    return families.some((group) => group.has(expected) && group.has(actual));
+  }
+
   function versionToken(value) {
     return normalizeText(value).match(/\bv?(\d+\.\d+(?:\.\d+){0,3})\b/i)?.[1] || "";
   }
@@ -157,36 +198,74 @@
   }
 
   function chooseStructuredAttachment(nativeButton, attachments) {
-    const assistantFiles = (attachments || []).filter((item) => String(item?.role || "assistant") !== "user");
+    const assistantFiles = (attachments || []).filter((item) => {
+      if (String(item?.role || "assistant") === "user") return false;
+      return Boolean(
+        item?.fileId
+        || item?.resolvedDownloadUrl
+        || item?.url
+        || item?.sandboxPath
+        || (Array.isArray(item?.sandboxPaths) && item.sandboxPaths.length)
+      );
+    });
     if (!assistantFiles.length) return null;
 
     const visibleLabel = stripDownloadPrefix(citationFilename(nativeButton));
     const visibleKey = normalizedFilenameKey(visibleLabel);
+    const visibleStem = normalizedFilenameStem(visibleLabel);
+    const compatible = assistantFiles.filter((item) => compatibleExtension(nativeButton, item));
+    const pool = compatible.length ? compatible : assistantFiles;
+
     if (looksLikeFilename(visibleLabel)) {
-      const exact = assistantFiles.filter((item) => normalizedFilenameKey(item?.resolvedFileName || item?.name || "") === visibleKey);
+      const exact = pool.filter((item) => normalizedFilenameKey(item?.resolvedFileName || item?.name || "") === visibleKey);
       if (exact.length === 1) return exact[0];
+    }
+
+    if (visibleStem) {
+      const stemMatches = pool.filter((item) => normalizedFilenameStem(item?.resolvedFileName || item?.name || "") === visibleStem);
+      if (stemMatches.length === 1) return stemMatches[0];
+
+      const contained = pool.filter((item) => {
+        const candidate = normalizedFilenameStem(item?.resolvedFileName || item?.name || "");
+        return candidate && visibleStem.length >= 6 && (candidate.includes(visibleStem) || visibleStem.includes(candidate));
+      });
+      if (contained.length === 1) return contained[0];
     }
 
     const version = versionToken(visibleLabel);
     if (version) {
-      const versionMatches = assistantFiles.filter((item) => versionToken(item?.resolvedFileName || item?.name || "") === version);
+      const versionMatches = pool.filter((item) => versionToken(item?.resolvedFileName || item?.name || "") === version);
       if (versionMatches.length === 1) return versionMatches[0];
     }
 
     const messageId = getTurnMessageId(nativeButton);
     if (messageId) {
-      const sameMessage = assistantFiles
+      const sameMessage = pool
         .filter((item) => String(item?.messageId || "") === messageId)
         .sort((a, b) => Number(a?.appearanceIndex || 0) - Number(b?.appearanceIndex || 0));
       if (sameMessage.length === 1) return sameMessage[0];
       if (sameMessage.length > 1) {
-        const buttons = candidateButtonsInTurn(nativeButton);
+        const buttons = candidateButtonsInTurn(nativeButton).filter((button) => compatibleExtension(button, sameMessage[0]));
         const index = buttons.indexOf(nativeButton);
         if (index >= 0 && buttons.length === sameMessage.length && sameMessage[index]) return sameMessage[index];
       }
     }
 
-    return assistantFiles.length === 1 ? assistantFiles[0] : null;
+    // Generated-file controls are sometimes rendered in the assistant turn while their
+    // real attachment records live in adjacent hidden tool messages. If the latest visible
+    // turn has the same number of recognized file controls as the trailing compatible
+    // structured attachments, map by order as a conservative last resort.
+    const turnButtons = candidateButtonsInTurn(nativeButton);
+    const typedButtons = turnButtons.filter((button) => libraryIconExtension(button) || filenameExtension(citationFilename(button)));
+    const index = typedButtons.indexOf(nativeButton);
+    if (index >= 0 && typedButtons.length > 0) {
+      const trailing = pool.slice(-typedButtons.length);
+      const sequenceCompatible = trailing.length === typedButtons.length
+        && typedButtons.every((button, idx) => compatibleExtension(button, trailing[idx]));
+      if (sequenceCompatible && trailing[index]) return trailing[index];
+    }
+
+    return pool.length === 1 ? pool[0] : null;
   }
 
   async function buildDownloadReference(nativeButton, context) {
@@ -258,9 +337,9 @@
     button.disabled = state === "loading";
   }
 
-  async function requestDirectDownload(nativeButton, directButton) {
+  async function requestDirectDownload(nativeButton, directButton, prebuilt = null) {
     const conversationApi = window.__CQS_CONVERSATION_API__;
-    const initialMetadata = inspectButtonMetadata(nativeButton);
+    const initialMetadata = prebuilt?.metadata || inspectButtonMetadata(nativeButton);
     const requestedName = initialMetadata.name || stripDownloadPrefix(citationFilename(nativeButton));
 
     if (!conversationApi?.resolveAttachment || !extensionApi?.runtime?.sendMessage) {
@@ -277,7 +356,7 @@
         accessToken: "",
         accountId: "",
       };
-      const built = await buildDownloadReference(nativeButton, context);
+      const built = prebuilt?.ref ? prebuilt : await buildDownloadReference(nativeButton, context);
       if (built.metadata?.ambiguous) {
         throw new Error(tr("這個按鈕同時對應多個檔案，為避免下載錯誤檔案，請使用 ChatGPT 原生下載。", "This button maps to multiple files. Use ChatGPT's native download to avoid downloading the wrong file."));
       }
@@ -403,8 +482,10 @@
     citationFilename,
     isAssistantCitation,
     isLikelyFileButton,
+    libraryIconExtension,
     inspectButtonMetadata,
     chooseStructuredAttachment,
+    normalizedFilenameStem,
     buildDownloadReference,
     requestDirectDownload,
     ensureDirectDownloadButton,
