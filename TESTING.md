@@ -146,7 +146,11 @@ npm run verify
 9. Open the same conversation in two tabs and send a saved prompt; the existing execution lease must prevent duplicate sending.
 10. Use `管理提示語` to edit, delete, move up, and move down; reopen the menu and verify order and content persist.
 11. Open another ChatGPT tab and confirm saved prompt changes synchronize through `storage.local`.
-12. Verify the 31st prompt is rejected with a clear local limit message.
+12. Save at least 35 prompts; verify all remain visible and persist after reopening the menu and refreshing the page.
+13. Export all prompts and verify the JSON contains every saved prompt with title, text, ID, and timestamps.
+14. Import a backup containing new and existing IDs; verify new prompts are added, matching IDs are updated, and prompts absent from the backup remain untouched.
+15. Import malformed JSON or a JSON file without a prompt array; verify an error is shown and existing prompts remain unchanged.
+16. Open two ChatGPT tabs and import in one; verify the complete merged list synchronizes through `storage.local`.
 ## v0.7.1 regression checks
 
 51. Rapidly create two saved prompts without waiting between clicks; both must remain after reopening the menu and after a page refresh.
@@ -331,3 +335,11 @@ npm run verify
 2. Confirm the complete conversation ZIP archive option displays a small `Beta` badge immediately beside its title.
 3. Confirm the badge does not appear beside Markdown export or handoff summary.
 4. Hover the badge and confirm the localized stability notice appears.
+
+## v0.9.8 Header placement and theme adaptation
+
+1. Open ChatGPT on desktop and confirm `匯出與轉移` appears in the top header row before the overflow/share actions, not above the composer.
+2. Open the export menu and saved-prompt manager; confirm both use the active ChatGPT theme.
+3. Switch ChatGPT from light to dark and back without reloading; confirm the export menu, dialogs, queue manager, schedule panel, preview bar, composer button, and toast update their colors.
+4. Confirm dark mode uses dark surfaces and light text, including the saved-prompt import/export buttons.
+5. If the header share/overflow controls cannot be detected, confirm the export control safely falls back to its floating placement.

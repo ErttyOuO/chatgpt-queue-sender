@@ -1101,6 +1101,47 @@
     monitor.lastAssistantSignature = signature;
   }
 
+  const ERROR_RETRY_LABEL = /^(?:retry|try again|重試|重新嘗試|再試一次|再试一次|重试|重新尝试)$/i;
+  const ERROR_TEXT = /something went wrong|an error occurred|error generating|network error|error in message stream|unable to (?:generate|load)|出了點問題|出了点问题|發生錯誤|发生错误|出現錯誤|出现错误|網路錯誤|网络错误|無法產生|无法生成|生成.{0,6}(?:失敗|失败)/i;
+  const AUTO_RETRY_MIN_GAP_MS = 4000;
+  const AUTO_RETRY_MAX_PER_TURN = 5;
+  const autoRetry = { lastAt: 0, turnKey: "", count: 0 };
+
+  function findErrorRetryButton() {
+    let buttons = [];
+    try { buttons = [...document.querySelectorAll("button")]; } catch (_) {}
+    for (let i = buttons.length - 1; i >= 0; i -= 1) {
+      const button = buttons[i];
+      if (isCqsUi(button) || !isVisible(button) || button.disabled || button.getAttribute("aria-disabled") === "true") continue;
+      if (button.closest("form, [role='menu'], [role='dialog'], nav, aside")) continue;
+      const label = normalizeText(button.innerText || button.textContent || "");
+      if (!label || label.length > 12 || !ERROR_RETRY_LABEL.test(label)) continue;
+      const container = button.closest("[data-testid^='conversation-turn-'], article, [data-turn]") || button.parentElement?.parentElement;
+      const nearby = normalizeText(container?.innerText || "");
+      if (nearby.length <= 600 && ERROR_TEXT.test(nearby)) return button;
+      const near = normalizeText(button.parentElement?.innerText || "");
+      if (ERROR_TEXT.test(near)) return button;
+    }
+    return null;
+  }
+
+  function autoRetryOnError() {
+    if (state.autoRetryDisabled) return false;
+    const now = Date.now();
+    if (now - autoRetry.lastAt < AUTO_RETRY_MIN_GAP_MS) return false;
+    if (hasBusyEvidence()) return false;
+    const button = findErrorRetryButton();
+    if (!button) return false;
+    const key = `${location.pathname}:${getConversationCounts().user}`;
+    if (autoRetry.turnKey !== key) { autoRetry.turnKey = key; autoRetry.count = 0; }
+    if (autoRetry.count >= AUTO_RETRY_MAX_PER_TURN) return false;
+    autoRetry.count += 1;
+    autoRetry.lastAt = now;
+    button.click();
+    showToast(tr("偵測到 ChatGPT 錯誤，已自動按下重試（{n}/{max}）", "ChatGPT error detected. Retry clicked automatically ({n}/{max}).", { n: autoRetry.count, max: AUTO_RETRY_MAX_PER_TURN }), { duration: 2600 });
+    return true;
+  }
+
   function getComposerRoot() {
     const input = getComposerInput();
     const send = getSendButton(false);
@@ -2764,6 +2805,7 @@
     observer.observe(document.documentElement, { childList: true, subtree: true });
     setInterval(scheduleUiRefresh, 1800);
     setInterval(responseMonitorTick, 650);
+    setInterval(autoRetryOnError, 1500);
     setInterval(() => { void switchQueueScopeIfNeeded(); }, 400);
   }
 

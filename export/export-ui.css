@@ -1158,3 +1158,123 @@
     animation: none !important;
   }
 }
+
+/* Place the export control in ChatGPT's top-right action row when available. */
+#cqs-export-control[data-cqs-placement="header"] {
+  position: relative;
+  top: auto !important;
+  left: auto !important;
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: center;
+  margin-inline-end: 8px;
+  vertical-align: middle;
+}
+
+#cqs-export-control[data-cqs-placement="header"] .cqs-export-trigger {
+  min-height: 36px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+#cqs-export-control[data-cqs-placement="header"] #cqs-export-menu {
+  top: calc(100% + 7px);
+  right: 0;
+  left: auto;
+}
+
+#cqs-export-control[data-cqs-placement="header"] .cqs-recent-activity {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 2;
+  margin-top: 0;
+}
+
+#cqs-export-control[data-cqs-placement="header"][data-menu-open="true"] .cqs-recent-activity {
+  display: none;
+}
+
+/* The page can use a manual theme that differs from the browser's system theme. */
+#cqs-export-control[data-cqs-theme="light"],
+#cqs-export-modal[data-cqs-theme="light"],
+#cqs-export-toast[data-cqs-theme="light"] {
+  --main-surface-primary: #ffffff;
+  --main-surface-secondary: #f7f7f8;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  color-scheme: light;
+}
+
+#cqs-export-control[data-cqs-theme="dark"],
+#cqs-export-modal[data-cqs-theme="dark"],
+#cqs-export-toast[data-cqs-theme="dark"] {
+  --main-surface-primary: #212121;
+  --main-surface-secondary: #303030;
+  --text-primary: #ececec;
+  --text-secondary: #a1a1a1;
+  color-scheme: dark;
+}
+
+#cqs-export-control[data-cqs-theme="dark"] .cqs-export-trigger {
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
+}
+
+#cqs-export-control[data-cqs-theme="dark"] .cqs-export-trigger:hover,
+#cqs-export-control[data-cqs-theme="dark"] .cqs-export-trigger:focus-visible,
+#cqs-export-control[data-cqs-theme="dark"] .cqs-export-trigger[aria-expanded="true"] {
+  border-color: rgba(16, 163, 127, 0.48);
+  background: color-mix(in srgb, var(--main-surface-secondary) 84%, rgb(16, 163, 127) 16%);
+}
+
+#cqs-export-control[data-cqs-theme="dark"] #cqs-export-menu {
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
+}
+
+#cqs-export-control[data-cqs-theme="dark"] .cqs-custom-prompt-actions .cqs-custom-prompt-send-button {
+  color: #8be4c3;
+}
+
+#cqs-export-modal[data-cqs-theme="dark"] {
+  background: rgba(0, 0, 0, 0.68);
+}
+
+#cqs-export-modal[data-cqs-theme="dark"] .cqs-export-modal-card {
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.62);
+}
+
+#cqs-export-modal[data-cqs-theme="dark"] .cqs-danger,
+#cqs-export-modal[data-cqs-theme="dark"] .cqs-custom-prompt-manage-actions button.cqs-danger {
+  color: #fca5a5;
+}
+
+#cqs-export-modal .cqs-custom-prompt-transfer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(142, 142, 160, 0.18);
+}
+
+#cqs-export-modal .cqs-custom-prompt-transfer button {
+  appearance: none;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(142, 142, 160, 0.28);
+  border-radius: 10px;
+  background: var(--main-surface-secondary, #f7f7f8);
+  color: var(--text-primary, #111827);
+  font: 650 12px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+#cqs-export-modal .cqs-custom-prompt-transfer button:hover,
+#cqs-export-modal .cqs-custom-prompt-transfer button:focus-visible {
+  background: color-mix(in srgb, var(--main-surface-secondary, #f7f7f8) 84%, var(--text-primary, #111827) 16%);
+  outline: none;
+}

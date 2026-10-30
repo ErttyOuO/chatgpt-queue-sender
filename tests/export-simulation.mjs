@@ -16,7 +16,13 @@ async function waitFor(fn, timeout = 8000, step = 40) {
   throw new Error('waitFor timeout');
 }
 
-const html = `<!doctype html><html><body>
+const html = `<!doctype html><html class="dark"><body>
+  <header id="app-header">
+    <div id="header-actions">
+      <button id="more-action" aria-label="More options" type="button">…</button>
+      <button id="share-action" aria-label="Share" type="button">Share</button>
+    </div>
+  </header>
   <main id="main">
     <article data-testid="conversation-turn-1">
       <div data-message-author-role="user">
@@ -52,12 +58,15 @@ const dom = new JSDOM(html, { url: 'https://chatgpt.com/c/test-export', runScrip
 const { window } = dom;
 window.document.title = 'Queue Sender 開發 - ChatGPT';
 window.HTMLElement.prototype.getBoundingClientRect = function () {
+  if (this.id === 'header-actions') return { x: 900, y: 8, top: 8, left: 900, right: 1100, bottom: 52, width: 200, height: 44, toJSON() {} };
+  if (this.id === 'more-action') return { x: 1010, y: 12, top: 12, left: 1010, right: 1046, bottom: 48, width: 36, height: 36, toJSON() {} };
+  if (this.id === 'share-action') return { x: 1054, y: 12, top: 12, left: 1054, right: 1100, bottom: 48, width: 46, height: 36, toJSON() {} };
   return { x: 200, y: 70, top: 70, left: 200, right: 1000, bottom: 700, width: 800, height: 630, toJSON() {} };
 };
 window.HTMLElement.prototype.getClientRects = function () {
   return [{ x: 0, y: 0, top: 0, left: 0, right: 100, bottom: 20, width: 100, height: 20 }];
 };
-window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', overflowY: 'visible' });
+window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', overflowY: 'visible', backgroundColor: 'rgba(0, 0, 0, 0)', colorScheme: '', getPropertyValue: () => '' });
 window.scrollTo = (_x, y) => { window.document.documentElement.scrollTop = y; };
 Object.defineProperty(window.document.documentElement, 'scrollHeight', { configurable: true, get: () => 25000 });
 Object.defineProperty(window.document.documentElement, 'clientHeight', { configurable: true, get: () => 700 });
@@ -87,6 +96,12 @@ window.document.querySelector('#react-file')['__reactProps$test'] = {
   },
 };
 
+window.__CQS_CONVERSATION_API__ = {
+  extractFileId(value) {
+    return String(value || '').match(/(?:file|asset)[-_][A-Za-z0-9_-]{8,}/i)?.[0] || '';
+  },
+};
+
 window.__CQS_QUEUE_API__ = {
   enqueueText(text, options) {
     enqueued.push({ text, options });
@@ -102,12 +117,28 @@ const latestTurn = window.document.querySelector('[data-message-id="assistant-v0
 const generatedAttachments = window.__CQS_CONVERSATION_EXPORT__.detectAttachments(latestTurn, 'assistant');
 const inferredXpi = generatedAttachments.find((item) => item.name === 'chatgpt-queue-sender-firefox-v0.8.2-amo.xpi');
 const inferredSource = generatedAttachments.find((item) => item.name === 'chatgpt-queue-sender-firefox-v0.8.2-source.zip');
-const reactFile = generatedAttachments.find((item) => item.fileId === 'file_00000000REACTBUTTON1234567890');
+const reactFile = generatedAttachments.find((item) => item.name === 'react-generated-result.json');
 if (!inferredXpi?.sandboxPaths?.length || inferredXpi.messageId !== 'assistant-v082') throw new Error('Generated XPI button was not inferred as a sandbox attachment');
 if (!inferredSource?.sandboxPaths?.length || inferredSource.messageId !== 'assistant-v082') throw new Error('Generated source ZIP button was not inferred as a sandbox attachment');
 if (!reactFile || reactFile.name !== 'react-generated-result.json') throw new Error('React-backed file metadata was not detected');
 
 await waitFor(() => window.document.querySelector('#cqs-export-control'));
+const exportControl = window.document.querySelector('#cqs-export-control');
+if (exportControl.dataset.cqsPlacement !== 'header' || exportControl.parentElement.id !== 'header-actions') throw new Error('Export control was not moved into the header action row');
+if (exportControl.nextElementSibling?.id !== 'more-action') throw new Error('Export control was not placed before the header overflow button');
+if (exportControl.dataset.cqsTheme !== 'dark') throw new Error('Dark page theme was not applied to the export control');
+const themeTargets = ['cqs-preview-bar', 'cqs-manager', 'cqs-toast', 'cqs-schedule-panel', 'cqs-floating-button'].map((id) => {
+  const element = id === 'cqs-floating-button' ? window.document.createElement('button') : window.document.createElement('div');
+  element.id = id;
+  window.document.body.appendChild(element);
+  return element;
+});
+await waitFor(() => themeTargets.every((element) => element.dataset.cqsTheme === 'dark'));
+window.document.documentElement.classList.remove('dark');
+window.document.documentElement.dataset.theme = 'light';
+await waitFor(() => exportControl.dataset.cqsTheme === 'light' && themeTargets.every((element) => element.dataset.cqsTheme === 'light'));
+window.document.documentElement.dataset.theme = 'dark';
+await waitFor(() => exportControl.dataset.cqsTheme === 'dark' && themeTargets.every((element) => element.dataset.cqsTheme === 'dark'));
 const archiveBetaBadge = window.document.querySelector('[data-cqs-export-action="download-archive"] .cqs-export-beta-badge');
 if (!archiveBetaBadge || archiveBetaBadge.textContent.trim() !== 'Beta') throw new Error('Archive Beta badge is missing');
 const trigger = window.document.querySelector('.cqs-export-trigger');
@@ -140,6 +171,7 @@ if (!capturedFilename.endsWith('.md')) throw new Error('Markdown filename missin
 trigger.click();
 window.document.querySelector('[data-cqs-export-action="open-handoff"]').click();
 const textarea = await waitFor(() => window.document.querySelector('#cqs-handoff-textarea'));
+if (window.document.querySelector('#cqs-export-modal')?.dataset.cqsTheme !== 'dark') throw new Error('Modal did not inherit the active dark theme');
 if (!textarea.value.includes('# 對話交接摘要')) throw new Error('Handoff prompt preview missing');
 const sendButton = [...window.document.querySelectorAll('#cqs-export-modal .cqs-export-modal-actions button')]
   .find((button) => button.textContent === '送出整理指令');
@@ -150,7 +182,7 @@ window.document.dispatchEvent(new window.CustomEvent('cqs:queue-item-completed',
 const copyButton = await waitFor(() => window.document.querySelector('[data-cqs-copy-handoff]'));
 copyButton.click();
 await waitFor(() => window.__copied);
-if (!window.__copied.includes('整理結果')) throw new Error('Handoff copy button copied the wrong response');
+if (!window.__copied.includes('ChatGPT Queue Sender v0.8.2')) throw new Error('Handoff copy button copied the wrong latest assistant response');
 await wait(120);
 const copiedLength = window.__copied?.length || 0;
 

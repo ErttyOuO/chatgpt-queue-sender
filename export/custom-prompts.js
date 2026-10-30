@@ -5,7 +5,6 @@
   const locale = globalThis.CQS_I18N?.locale || "zh-TW";
 
   const STORAGE_KEY = "cqs_saved_prompts_v1";
-  const MAX_PROMPTS = 30;
   const MAX_TITLE_LENGTH = 80;
   const MAX_TEXT_LENGTH = 20000;
   const extensionApi = globalThis.browser || globalThis.chrome;
@@ -65,7 +64,7 @@
       try {
         const result = await extensionApi.storage.local.get(STORAGE_KEY);
         const raw = Array.isArray(result?.[STORAGE_KEY]) ? result[STORAGE_KEY] : [];
-        state.prompts = raw.map(normalizePrompt).filter(Boolean).slice(0, MAX_PROMPTS);
+        state.prompts = raw.map(normalizePrompt).filter(Boolean);
       } catch (error) {
         console.warn("[CQS Saved Prompts] Failed to load prompts", error);
         state.prompts = [];
@@ -83,7 +82,7 @@
 
   function applyStoredPrompts(rawValue) {
     const raw = Array.isArray(rawValue) ? rawValue : [];
-    state.prompts = raw.map(normalizePrompt).filter(Boolean).slice(0, MAX_PROMPTS);
+    state.prompts = raw.map(normalizePrompt).filter(Boolean);
     state.loaded = true;
     renderMenu();
   }
@@ -130,7 +129,6 @@
         updatedAt: now,
       };
     } else {
-      if (state.prompts.length >= MAX_PROMPTS) throw new Error(tr("最多可儲存 {count} 則自訂提示語。", "You can save up to {count} prompts.", { count: MAX_PROMPTS }));
       state.prompts.push({
         id: generateId(),
         title: normalizeTitle(input?.title, text),
@@ -142,6 +140,38 @@
     await persistPrompts();
     renderMenu();
     return existingIndex >= 0 ? state.prompts[existingIndex] : state.prompts.at(-1);
+  }
+
+  function exportPrompts() {
+    const payload = { format: "cqs-saved-prompts", version: 1, exportedAt: new Date().toISOString(), prompts: clonePrompts() };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `chatgpt-queue-saved-prompts-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return payload;
+  }
+
+  async function importPrompts(payload) {
+    if (!state.loaded) await loadPrompts();
+    const imported = Array.isArray(payload) ? payload : payload?.prompts;
+    if (!Array.isArray(imported)) throw new Error(tr("檔案格式不正確，找不到提示語清單。", "Invalid file: prompt list not found."));
+    const merged = new Map(state.prompts.map((prompt) => [prompt.id, prompt]));
+    let added = 0;
+    let updated = 0;
+    for (const [index, raw] of imported.entries()) {
+      const prompt = normalizePrompt(raw, index);
+      if (!prompt) continue;
+      if (merged.has(prompt.id)) updated += 1;
+      else added += 1;
+      merged.set(prompt.id, prompt);
+    }
+    state.prompts = [...merged.values()];
+    await persistPrompts();
+    renderMenu();
+    return { added, updated, total: state.prompts.length };
   }
 
   async function removePrompt(id) {
@@ -443,9 +473,35 @@
       });
     }
 
+    const transfer = ui.createElement("div", { className: "cqs-custom-prompt-transfer" });
+    const exportButton = createButton(tr("匯出所有提示語", "Export all prompts"), "", tr("下載包含全部提示語的 JSON 備份", "Download a JSON backup of every saved prompt"));
+    exportButton.addEventListener("click", () => {
+      exportPrompts();
+      showToast(tr("已匯出全部 {count} 則提示語。", "Exported all {count} prompts.", { count: state.prompts.length }));
+    });
+    const importButton = createButton(tr("匯入提示語", "Import prompts"), "", tr("從 JSON 備份合併匯入提示語", "Merge prompts from a JSON backup"));
+    const fileInput = ui.createElement("input", { type: "file", attrs: { accept: "application/json,.json", hidden: "hidden" } });
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      try {
+        const result = await importPrompts(JSON.parse(await file.text()));
+        ui.closeModal();
+        showToast(tr("匯入完成：新增 {added} 則、更新 {updated} 則，目前共 {total} 則。", "Import complete: {added} added, {updated} updated, {total} total.", result));
+        openManager();
+      } catch (error) {
+        showToast(error?.message || tr("匯入失敗，原有提示語未變更。", "Import failed. Existing prompts were not changed."));
+      } finally {
+        fileInput.value = "";
+      }
+    });
+    importButton.addEventListener("click", () => fileInput.click());
+    transfer.append(exportButton, importButton, fileInput);
+    wrapper.append(transfer);
+
     ui.openModal({
       title: tr("管理自訂提示語", "Manage saved prompts"),
-      description: tr("可儲存最多 {count} 則；這些提示語會在所有 ChatGPT 聊天室共用。", "Save up to {count} prompts. They are shared across all ChatGPT conversations.", { count: MAX_PROMPTS }),
+      description: tr("提示語數量不設上限；匯入會與現有提示語合併，不會清空原有內容。", "No prompt-count cap. Imports merge with existing prompts and never clear your library."),
       content: wrapper,
       actions: [
         { label: tr("關閉", "Close"), onClick: () => ui.closeModal() },
@@ -476,8 +532,9 @@
 
   window.__CQS_CUSTOM_PROMPTS__ = Object.freeze({
     storageKey: STORAGE_KEY,
-    maxPrompts: MAX_PROMPTS,
     getPrompts: clonePrompts,
+    exportPrompts,
+    importPrompts,
     loadPrompts,
     savePrompt,
     removePrompt,

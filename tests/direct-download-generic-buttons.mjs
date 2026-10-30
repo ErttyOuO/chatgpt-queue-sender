@@ -82,7 +82,7 @@ class FakeElement {
   }
 }
 
-function makeFileButton(label, messageId) {
+function makeFileButton(label, messageId, iconKey = 'pdf') {
   const turn = new FakeElement('article', { 'data-message-id': messageId });
   const assistant = new FakeElement('div', { 'data-message-author-role': 'assistant' });
   const button = new FakeElement('button', { 'aria-label': label });
@@ -90,7 +90,7 @@ function makeFileButton(label, messageId) {
   const span = new FakeElement('span');
   const icon = new FakeElement('svg', {
     'data-testid': 'library-file-icon',
-    'data-library-file-icon-kind': 'document',
+    'data-library-file-icon-key': iconKey,
   });
   span.appendChild(icon);
   button.appendChild(span);
@@ -100,7 +100,7 @@ function makeFileButton(label, messageId) {
 }
 
 const pdf = makeFileButton('consulting_v2.pdf', '11111111-1111-1111-1111-111111111111');
-const report = makeFileButton('下載 v2.2.12 驗證報告', '22222222-2222-2222-2222-222222222222');
+const report = makeFileButton('下載 v2.2.12 驗證報告', '22222222-2222-2222-2222-222222222222', 'markdown');
 
 const nativeArtifact = new FakeElement('button', { 'aria-label': 'Firefox／AMO XPI v0.9.0' });
 nativeArtifact.textContent = 'Firefox／AMO XPI v0.9.0';

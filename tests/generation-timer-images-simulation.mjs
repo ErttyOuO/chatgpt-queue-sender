@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const root = new URL('../', import.meta.url);
-const contentSource = fs.readFileSync(new URL('../content.js', import.meta.url), 'utf8');
+const contentSource = fs.readFileSync(new URL('../content.js', import.meta.url), 'utf8').split('\r\n').join('\n');
 const recentSource = fs.readFileSync(new URL('../export/recent-files.js', import.meta.url), 'utf8');
 
 function between(source, startMarker, endMarker) {

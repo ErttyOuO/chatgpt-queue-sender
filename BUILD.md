@@ -23,21 +23,24 @@ npm run verify
 Run from inside this folder:
 
 ```bash
-zip -X -r ../chatgpt-queue-sender-firefox-v0.9.4-amo.xpi \
+zip -X -r ../chatgpt-queue-sender-firefox-v0.9.8-amo.xpi \
   manifest.json i18n.js background.js content.js content.css \
   _locales export popup icons
 ```
 
-The XPI archive root must directly contain `manifest.json`; do not zip the parent folder itself. Documentation, tests, `package.json`, `package-lock.json`, and `node_modules` are not required in the AMO package.
+The XPI archive root must directly contain `manifest.json`; do not zip the parent folder itself. Documentation, tests, `package.json`, `package-lock.json`, and `node_modules` are not required in the AMO package. The generated XPI is an unsigned AMO submission package: standard Firefox release builds require Mozilla signing before installing an XPI. For immediate local testing, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select this project's `manifest.json`.
 
 ## Create source ZIP
 
-Run from the parent folder after deleting `node_modules`:
+Run from the parent folder. Keep the project folder as the archive's top-level directory, and exclude development or temporary folders:
 
 ```bash
-zip -X -r chatgpt-queue-sender-firefox-v0.9.4-source.zip \
-  chatgpt-queue-sender-firefox-v0.9.4-source
+zip -X -r chatgpt-queue-sender-firefox-v0.9.8-source.zip \
+  chatgpt-queue-sender-firefox-v0.9.8-source \
+  -x '*/.git/*' '*/node_modules/*' '*/dist/*' '*/.tmp.driveupload/*' '*/.tmp.drivedownload/*'
 ```
+
+The source ZIP retains the manifest, runtime code, popup, locales, documentation, tests, and package metadata. It intentionally omits `.git`, `node_modules`, generated `dist`, and temporary Drive staging folders.
 
 ## Permission design
 

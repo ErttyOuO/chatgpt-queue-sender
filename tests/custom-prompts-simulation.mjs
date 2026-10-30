@@ -59,6 +59,7 @@ class FakeElement {
   select() {}
   setSelectionRange() {}
   focus() {}
+  click() { this.clicked = true; }
 }
 
 const host = new FakeElement('div');
@@ -133,6 +134,8 @@ const context = vm.createContext({
   Number,
   Boolean,
   Promise,
+  Blob,
+  URL: { createObjectURL() { return 'blob:test'; }, revokeObjectURL() {} },
   setTimeout,
   clearTimeout,
 });
@@ -167,6 +170,24 @@ await api.movePrompt(second.id, -1);
 if (api.getPrompts()[0].id !== second.id) throw new Error('prompt reordering failed');
 await api.removePrompt(first.id);
 if (api.getPrompts().length !== 1) throw new Error('prompt deletion failed');
+
+for (let index = 0; index < 35; index += 1) {
+  await api.savePrompt({ title: `Prompt ${index}`, text: `Content ${index}` });
+}
+if (api.getPrompts().length !== 36) throw new Error('prompt count was unexpectedly capped');
+const beforeImport = api.getPrompts();
+const imported = await api.importPrompts({ prompts: [
+  { id: beforeImport[0].id, title: 'Updated existing', text: 'Updated content' },
+  { id: 'imported-unique', title: 'Imported', text: 'Imported content' },
+] });
+if (imported.added !== 1 || imported.updated !== 1 || imported.total !== 37) throw new Error('prompt import merge counts mismatch');
+if (!api.getPrompts().some(({ id }) => id === beforeImport.at(-1).id)) throw new Error('import removed an unrelated existing prompt');
+if (api.getPrompts()[0].title !== 'Updated existing') throw new Error('matching prompt ID was not updated');
+let invalidImportRejected = false;
+try { await api.importPrompts({ invalid: true }); } catch { invalidImportRejected = true; }
+if (!invalidImportRejected || api.getPrompts().length !== 37) throw new Error('invalid import changed saved prompts');
+const backup = api.exportPrompts();
+if (backup.format !== 'cqs-saved-prompts' || backup.version !== 1 || backup.prompts.length !== 37) throw new Error('export did not include the complete prompt library');
 
 console.log(JSON.stringify({
   ok: true,

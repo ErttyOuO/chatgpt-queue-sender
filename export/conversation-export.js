@@ -156,15 +156,119 @@
     return control;
   }
 
+  function getActionLabel(element) {
+    return [element.getAttribute("aria-label"), element.getAttribute("title"), element.innerText, element.textContent]
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function findHeaderActionTarget() {
+    const actionSelector = "button, [role='button']";
+    const actions = [...document.querySelectorAll(actionSelector)].filter((element) => {
+      if (!isRendered(element)) return false;
+      const rect = element.getBoundingClientRect();
+      return rect.top >= -20 && rect.top <= 140 && rect.height <= 90;
+    });
+    const share = actions.find((element) => {
+      const label = getActionLabel(element);
+      return /(?:\bshare\b|分享)/i.test(label) || /share/i.test(element.getAttribute("data-testid") || "");
+    });
+    if (!share) return null;
+
+    for (let container = share.parentElement; container && container !== document.body; container = container.parentElement) {
+      const rect = container.getBoundingClientRect();
+      if (rect.top > 140 || rect.height > 110 || rect.width > window.innerWidth + 1) continue;
+      const containedActions = [...container.querySelectorAll(actionSelector)].filter(isRendered);
+      if (!containedActions.includes(share) || containedActions.length < 2) continue;
+      const overflow = containedActions.find((element) => {
+        if (element === share) return false;
+        const label = getActionLabel(element);
+        return /(?:more|options|menu|更多|選項|其他操作)/i.test(label) || /^(?:…|\.{3}|⋯)$/.test(label);
+      });
+      const target = overflow || share;
+      const anchor = [...container.children].find((child) => child === target || child.contains(target));
+      if (anchor) return { container, anchor };
+    }
+    return share.parentElement ? { container: share.parentElement, anchor: share } : null;
+  }
+
+  function getColorLuminance(value) {
+    const color = String(value || "").trim();
+    const hex = color.match(/^#([0-9a-f]{3,8})$/i)?.[1];
+    if (hex) {
+      const expanded = hex.length === 3 || hex.length === 4 ? [...hex.slice(0, 3)].map((part) => part + part).join("") : hex.slice(0, 6);
+      if (expanded.length === 6) return getColorLuminance(`rgb(${parseInt(expanded.slice(0, 2), 16)}, ${parseInt(expanded.slice(2, 4), 16)}, ${parseInt(expanded.slice(4, 6), 16)})`);
+    }
+    const rgb = color.match(/^rgba?\(([^)]+)\)$/i)?.[1];
+    if (!rgb) return null;
+    const channels = rgb.split(/[,\s/]+/).filter(Boolean).map(Number);
+    if (channels.length < 3 || channels.slice(0, 3).some((channel) => !Number.isFinite(channel))) return null;
+    if (channels.length > 3 && channels[3] <= 0) return null;
+    return (0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]) / 255;
+  }
+
+  function detectPageTheme() {
+    for (const node of [document.documentElement, document.body].filter(Boolean)) {
+      const marker = [node.getAttribute("data-theme"), node.getAttribute("data-color-scheme"), node.className]
+        .filter(Boolean)
+        .join(" ");
+      if (/\bdark\b/i.test(marker)) return "dark";
+      if (/\blight\b/i.test(marker)) return "light";
+    }
+
+    const colors = [];
+    try {
+      const rootStyle = getComputedStyle(document.documentElement);
+      colors.push(rootStyle.getPropertyValue?.("--main-surface-primary"), rootStyle.backgroundColor);
+      for (const node of [document.body, document.querySelector("main")].filter(Boolean)) {
+        const style = getComputedStyle(node);
+        colors.push(style.backgroundColor);
+        const luminance = getColorLuminance(style.backgroundColor);
+        if (luminance !== null) return luminance < 0.45 ? "dark" : "light";
+      }
+      for (const color of colors) {
+        const luminance = getColorLuminance(color);
+        if (luminance !== null) return luminance < 0.45 ? "dark" : "light";
+      }
+      if (rootStyle.colorScheme === "dark") return "dark";
+      if (rootStyle.colorScheme === "light") return "light";
+    } catch (_) {}
+    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+  }
+
+  function syncControlTheme() {
+    const theme = detectPageTheme();
+    for (const id of ["cqs-export-control", "cqs-export-modal", "cqs-export-toast", "cqs-preview-bar", "cqs-manager", "cqs-toast", "cqs-schedule-panel", "cqs-floating-button"]) {
+      const element = document.getElementById(id);
+      if (element) element.dataset.cqsTheme = theme;
+    }
+    return theme;
+  }
+
   function positionControl() {
     const control = document.getElementById("cqs-export-control");
     if (!control) return;
-    const main = getVisibleMain();
-    const rect = main.getBoundingClientRect();
-    const left = Math.max(10, Math.min(window.innerWidth - 190, rect.left + 12));
-    const top = Math.max(58, Math.min(94, rect.top + 10));
-    control.style.left = `${Math.round(left)}px`;
-    control.style.top = `${Math.round(top)}px`;
+    const target = findHeaderActionTarget();
+    if (target?.container && target.anchor) {
+      if (control.parentElement !== target.container || control.nextElementSibling !== target.anchor) {
+        target.container.insertBefore(control, target.anchor);
+      }
+      control.dataset.cqsPlacement = "header";
+      control.style.removeProperty("left");
+      control.style.removeProperty("top");
+    } else {
+      if (control.dataset.cqsPlacement === "header") document.documentElement.appendChild(control);
+      control.dataset.cqsPlacement = "floating";
+      const main = getVisibleMain();
+      const rect = main.getBoundingClientRect();
+      const left = Math.max(10, Math.min(window.innerWidth - 190, rect.left + 12));
+      const top = Math.max(58, Math.min(94, rect.top + 10));
+      control.style.left = `${Math.round(left)}px`;
+      control.style.top = `${Math.round(top)}px`;
+    }
+    syncControlTheme();
   }
 
   function setMenuOpen(open) {
@@ -172,6 +276,7 @@
     const control = ensureControl();
     const menu = control.querySelector("#cqs-export-menu");
     const trigger = control.querySelector(".cqs-export-trigger");
+    control.dataset.menuOpen = state.menuOpen ? "true" : "false";
     if (menu) menu.hidden = !state.menuOpen;
     trigger?.setAttribute("aria-expanded", state.menuOpen ? "true" : "false");
   }
@@ -185,6 +290,7 @@
       if (event.target === modal || event.target.closest("[data-cqs-export-close]")) closeModal();
     });
     document.documentElement.appendChild(modal);
+    syncControlTheme();
     return modal;
   }
 
@@ -246,6 +352,7 @@
       toast = createElement("div", { id: "cqs-export-toast", attrs: { role: "status", "aria-live": "polite" } });
       document.documentElement.appendChild(toast);
     }
+    syncControlTheme();
     toast.textContent = message;
     toast.hidden = false;
     clearTimeout(showExportToast.timer);
@@ -1189,6 +1296,12 @@
     }, 300);
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  const themeObserver = new MutationObserver(syncControlTheme);
+  const themeAttributes = { attributes: true, attributeFilter: ["class", "data-theme", "data-color-scheme", "style"] };
+  themeObserver.observe(document.documentElement, themeAttributes);
+  if (document.body) themeObserver.observe(document.body, themeAttributes);
+  window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", syncControlTheme);
 
   window.__CQS_CONVERSATION_EXPORT__ = Object.freeze({
     openModal,

@@ -1,7 +1,8 @@
+import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const root = new URL('..', import.meta.url).pathname;
+const root = fileURLToPath(new URL('..', import.meta.url));
 const context = {
   console,
   Blob,

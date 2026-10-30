@@ -1,8 +1,9 @@
+import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 const files = {
   'i18n.js': fs.readFileSync(path.join(root, 'i18n.js'), 'utf8'),
@@ -26,7 +27,7 @@ const assert = (condition, message) => {
 };
 
 assert(manifest.manifest_version === 3, 'manifest_version must be 3');
-assert(manifest.version === '0.9.4', 'manifest version must be 0.9.4');
+assert(manifest.version === '0.9.8', 'manifest version must be 0.9.8');
 assert(manifest.default_locale === 'en', 'default locale must be English for non-Chinese Firefox locales');
 assert(manifest.name === '__MSG_extensionName__', 'manifest name must use locale messages');
 assert(manifest.description === '__MSG_extensionDescription__', 'manifest description must use locale messages');
@@ -109,6 +110,7 @@ const recentFilesJs = files['recent-files.js'];
 const backgroundJs = files['background.js'];
 const popupJs = files['popup.js'];
 const exportCss = fs.readFileSync(path.join(root, 'export', 'export-ui.css'), 'utf8');
+const contentCss = fs.readFileSync(path.join(root, 'content.css'), 'utf8');
 
 assert(!contentJs.includes('data-cqs-action="start"'), 'permanent Start action must not exist');
 assert(contentJs.includes('waitForSubmissionConfirmed'), 'submission confirmation logic is missing');
@@ -205,12 +207,21 @@ assert(handoffJs.includes('kind: "handoff"'), 'handoff prompt is not queued with
 assert(exportJs.includes('cqs-export-beta-badge'), 'archive Beta badge is missing');
 assert(exportJs.includes('Beta feature'), 'archive Beta badge English accessibility text is missing');
 assert(exportCss.includes('.cqs-export-beta-badge'), 'archive Beta badge styling is missing');
+assert(exportJs.includes('findHeaderActionTarget'), 'export control header placement detection is missing');
+assert(exportJs.includes('dataset.cqsPlacement = "header"'), 'export control header placement state is missing');
+assert(exportJs.includes('syncControlTheme') && exportJs.includes('themeObserver'), 'export UI theme synchronization is missing');
+assert(exportCss.includes('[data-cqs-theme="dark"]') && exportCss.includes('--main-surface-primary: #212121'), 'dark-mode export UI palette is missing');
+assert(exportCss.includes('[data-cqs-placement="header"]'), 'top-header export control styling is missing');
+assert(exportJs.includes('"cqs-manager", "cqs-toast", "cqs-schedule-panel", "cqs-floating-button"'), 'theme sync for all injected controls is missing');
+assert(contentCss.includes('#cqs-manager[data-cqs-theme="dark"]') && contentCss.includes('--main-surface-primary: #212121'), 'dark-mode content UI palette is missing');
+assert(exportCss.includes('.cqs-custom-prompt-transfer button') && exportCss.includes('background: var(--main-surface-secondary'), 'custom prompt import/export buttons need theme-aware styling');
 assert(exportJs.includes('data-cqs-custom-prompt-host'), 'custom prompt menu host is missing');
 assert(exportJs.includes('setMenuOpen,'), 'export menu close API is missing');
 assert(customPromptsJs.includes('cqs_saved_prompts_v1'), 'saved prompt storage key is missing');
 assert(customPromptsJs.includes('kind: "saved-prompt"'), 'saved prompts are not routed through the queue API');
 assert(customPromptsJs.includes('navigator.clipboard'), 'saved prompt copy action is missing');
-assert(customPromptsJs.includes('MAX_PROMPTS = 30'), 'saved prompt item limit is missing');
+assert(!customPromptsJs.includes('MAX_PROMPTS'), 'saved prompt count must not have an artificial cap');
+assert(customPromptsJs.includes('function exportPrompts()') && customPromptsJs.includes('function importPrompts(payload)'), 'saved prompt import/export is missing');
 assert(backgroundJs.includes('notifications.create'), 'system notification creation is missing');
 assert(backgroundJs.includes('notifications.onClicked.addListener'), 'notification click handling is missing');
 assert(popupJs.includes('ensureNotificationPermission'), 'notification permission compatibility handling is missing');

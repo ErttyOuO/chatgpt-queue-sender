@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.8
+
+- Moved the Export & Transfer control into ChatGPT's top header action row, immediately before the overflow/share controls when available.
+- Added automatic light/dark theme detection and live theme synchronization for the export menu, saved prompts, dialogs, queue manager, schedule panel, preview bar, composer button, and toast UI.
+- Updated export UI regression coverage for header placement and theme switching.
+
+## 0.9.7
+
+- Removed the artificial 30-item limit from the saved custom prompt library.
+- Added JSON export of the complete prompt library and merge-based JSON import; existing prompts not present in an imported file are preserved.
+- Added regression checks for more than 30 prompts, import merging, and malformed imports.
+
+## 0.9.6
+
+- Added automatic retry: when ChatGPT shows a generation error with a Retry button, the extension clicks it (at most 5 times per message, at least 4 seconds apart) and shows a short toast.
+- Fixed version mismatch between package.json and manifest.json, and made the test suite run on Windows paths and CRLF checkouts.
+
 ## 0.9.4
 
 - Added per-file download feedback to the vertical latest-file list below **Export & Transfer**.

@@ -808,3 +808,39 @@ button#cqs-floating-button .cqs-btn-badge[hidden] {
 @keyframes cqs-direct-download-spin {
   to { transform: rotate(360deg); }
 }
+
+/* Keep every injected ChatGPT control in the page's active color scheme. */
+#cqs-preview-bar[data-cqs-theme="light"],
+#cqs-manager[data-cqs-theme="light"],
+#cqs-toast[data-cqs-theme="light"],
+#cqs-schedule-panel[data-cqs-theme="light"],
+button#cqs-floating-button[data-cqs-theme="light"] {
+  --main-surface-primary: #ffffff;
+  --main-surface-secondary: #f7f7f8;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  color-scheme: light;
+}
+
+#cqs-preview-bar[data-cqs-theme="dark"],
+#cqs-manager[data-cqs-theme="dark"],
+#cqs-toast[data-cqs-theme="dark"],
+#cqs-schedule-panel[data-cqs-theme="dark"],
+button#cqs-floating-button[data-cqs-theme="dark"] {
+  --main-surface-primary: #212121;
+  --main-surface-secondary: #303030;
+  --text-primary: #ececec;
+  --text-secondary: #a1a1a1;
+  color-scheme: dark;
+}
+
+#cqs-preview-bar[data-cqs-theme="dark"] button[data-cqs-action="stop"],
+#cqs-manager[data-cqs-theme="dark"] button[data-cqs-action="stop"] {
+  color: #fbbf24;
+}
+
+#cqs-preview-bar[data-cqs-theme="dark"] button[data-cqs-action="clear"],
+#cqs-manager[data-cqs-theme="dark"] button[data-cqs-action="clear"],
+#cqs-manager[data-cqs-theme="dark"] button[data-cqs-action="delete-item"] {
+  color: #fca5a5;
+}
