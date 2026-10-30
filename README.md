@@ -6,14 +6,14 @@
 **Firefox 上的 ChatGPT 訊息佇列助手**  
 先排好提示詞，等待上一則回覆真正完成後，再安全地自動送出下一則。
 
-[![Version](https://img.shields.io/badge/version-0.9.4-2f81f7)](#版本資訊)
+[![Version](https://img.shields.io/badge/version-0.9.8-2f81f7)](#版本資訊)
 [![Firefox Add-ons](https://img.shields.io/badge/Firefox%20Add--ons-Install-FF7139?logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)
 [![Firefox](https://img.shields.io/badge/Firefox-140%2B-FF7139?logo=firefoxbrowser&logoColor=white)](#安裝)
 [![Manifest](https://img.shields.io/badge/Manifest-V3-555)](./manifest.json)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=nodedotjs&logoColor=white)](./BUILD.md)
 [![Privacy](https://img.shields.io/badge/Telemetry-None-success)](./PRIVACY.md)
 
-**本機佇列 · 回覆完成提醒 · 自訂提示語 · Markdown 匯出 · ZIP 封存 Beta · 對話交接**
+**本機佇列 · 自動錯誤重試 · 自訂提示語 JSON 備份 · Markdown／ZIP 匯出 · 對話交接**
 
 ### [🦊 從 Firefox Add-ons 安裝](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)
 
@@ -35,9 +35,11 @@ ChatGPT Queue Sender 會在 ChatGPT 輸入框的 **「+」旁邊**加入一個�
 | 🔒 聊天室隔離 | 每個 conversation ID 使用獨立佇列，不會跨聊天室誤送 |
 | 🗂️ 多分頁保護 | 同一聊天室多分頁時，只允許一個分頁持有發送租約 |
 | 🛑 安全完成判定 | 避免 ChatGPT 還在 Thinking / Working / Running 時提早送出下一則 |
-| ✏️ 佇列管理 | 編輯、刪除、排序、複製、停止、繼續與重試 |
+| 🔁 錯誤自動重試 | 偵測 ChatGPT 錯誤訊息中的 Retry 按鈕；每輪最多自動重試 5 次，至少間隔 4 秒 |
+| ✏️ 佇列管理 | 編輯、刪除、排序、複製、停止、繼續與手動重試 |
 | 🔔 完成提醒 | 可選提示音與 Firefox / 作業系統通知 |
-| 💾 自訂提示語 | 常用提示語儲存在 Firefox 本機，可快速複製或送入目前聊天室 |
+| 💾 自訂提示語 | 本機保存，不設 30 則硬上限；支援完整 JSON 備份與合併匯入 |
+| 🎨 主題與位置整合 | Export & Transfer 優先放在 ChatGPT 頂部標題列，並即時跟隨淺色／深色主題 |
 | 📝 Markdown 匯出 | 匯出目前顯示的對話分支 |
 | 📦 完整 ZIP 封存 | Markdown + 使用者上傳 + ChatGPT 提供檔案 + 匯出報告 |
 | ⬇️ GPT 檔案直接下載 | ChatGPT 提供的檔案連結旁直接顯示下載按鈕，不必先開預覽再進三點選單 |
@@ -67,6 +69,29 @@ flowchart LR
 特別是在程式開發、工具執行或長回答中，ChatGPT 有時會先恢復 Send 按鈕，但背景工作仍在繼續。v0.8.6 加入更保守的完成判定，降低下一則訊息提早打斷工作的風險。
 
 ---
+
+## v0.9.8 標題列整合與主題同步
+
+「匯出與轉移（Export & Transfer）」現在會優先整合到 ChatGPT 頂部標題列的操作區，放在更多操作／分享控制之前；若頁面找不到合適的標題列操作區，則退回原本的浮動位置，不會因此失去入口。
+
+插件會自動辨識 ChatGPT 的淺色／深色主題，並在主題切換時同步更新匯出選單、自訂提示語、對話框、佇列管理、定時面板、預覽列、輸入框旁的佇列按鈕與提示通知。
+
+## v0.9.7 自訂提示語 JSON 備份與合併匯入
+
+自訂提示語庫移除原本的人為 30 則上限（仍受 Firefox 本機儲存空間配額限制），並新增完整 JSON 備份與匯入：
+
+- **匯出所有提示語**：下載包含全部提示語的 JSON 檔案，可作為備份或移轉用途。
+- **匯入提示語**：依提示語 ID 合併；相同 ID 的項目會更新，備份中沒有的既有提示語會保留，不會整庫覆蓋。
+- 匯入時會檢查資料格式，無效檔案不會直接取代目前的提示語庫。
+
+## v0.9.6 ChatGPT 錯誤自動重試
+
+當 ChatGPT 回覆出現明確的錯誤重試按鈕（Retry／Try again／重試等標籤）時，插件會自動嘗試點擊：
+
+- 每一輪回覆最多自動重試 **5 次**。
+- 每次自動重試至少間隔 **4 秒**，避免短時間連續點擊。
+- 觸發時會顯示簡短提示，標示目前重試次數。
+- 只有偵測到符合條件的重試按鈕才會執行，不會任意點擊一般頁面按鈕。
 
 ## v0.9.4 檔案下載狀態回饋
 
@@ -167,7 +192,7 @@ ChatGPT Queue Sender 已正式上架 Firefox Add-ons，可直接從 Mozilla 官�
 
 **[🦊 前往 Firefox Add-ons 安裝 ChatGPT 佇列發送/批次發送](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)**
 
-Firefox Add-ons 目前公開版本可能落後於此 repository；v0.9.4 需另外提交 Mozilla 審核後才會同步到商店。
+本 repository 目前的原始碼版本為 **v0.9.8**。這次 v0.9.8 XPI 尚未提交 Mozilla 審核，因此官方商店公開版可能落後；請以 Firefox Add-ons 頁面實際顯示的版本為準。
 
 安裝後開啟或重新整理：
 
@@ -316,8 +341,8 @@ v0.8.7 起 `notifications` 為必要權限，用來保證定時發送可以回�
 
 ## 介面位置與深色模式
 
-- 桌面版「匯出與轉移」會優先放入 ChatGPT 頂部標題列，位於更多操作／分享按鈕之前；若頁面結構不符合預期，會退回原本的浮動位置。
-- 會跟隨 ChatGPT 目前的淺色／深色主題，即時同步匯出選單、提示語管理、對話框、佇列管理、排程面板、預覽列與提示通知的配色。
+- **v0.9.8 起**，桌面版「匯出與轉移」會優先放入 ChatGPT 頂部標題列，位於更多操作／分享按鈕之前；若頁面結構不符合預期，會退回原本的浮動位置。
+- 自動偵測 ChatGPT 目前的淺色／深色主題，並在主題變更時即時同步匯出選單、提示語管理、對話框、佇列管理、排程面板、預覽列、輸入框旁的佇列按鈕與提示通知。
 - 深色模式使用深灰表面與淺色文字，不再使用白色面板。
 
 
@@ -475,7 +500,7 @@ npm run lint:amo
 
 - **[BUILD.md](./BUILD.md)** — 建置與 XPI / source ZIP 封裝方式
 - **[TESTING.md](./TESTING.md)** — 完整人工與自動測試清單
-- **[VALIDATION_REPORT.md](./VALIDATION_REPORT.md)** — 目前版本的驗證結果
+- **[VALIDATION_REPORT.md](./VALIDATION_REPORT.md)** — v0.9.2 的歷史驗證報告
 
 ---
 
@@ -510,8 +535,10 @@ npm run lint:amo
 │   ├── conversation-api.js
 │   ├── conversation-export.js
 │   ├── custom-prompts.js
+│   ├── direct-download.js
 │   ├── handoff-prompt.js
 │   ├── markdown-converter.js
+│   ├── recent-files.js
 │   ├── zip-writer.js
 │   └── export-ui.css
 ├── tests/
@@ -537,7 +564,7 @@ npm run lint:amo
 | [CHANGELOG.md](./CHANGELOG.md) | 版本變更紀錄 |
 | [FIREFOX_STORE_LISTING.md](./FIREFOX_STORE_LISTING.md) | Firefox Add-ons 商店文案與權限說明 |
 | [AMO_UPLOAD_NOTES.md](./AMO_UPLOAD_NOTES.md) | AMO 上傳注意事項 |
-| [VALIDATION_REPORT.md](./VALIDATION_REPORT.md) | v0.9.2 驗證報告 |
+| [VALIDATION_REPORT.md](./VALIDATION_REPORT.md) | v0.9.2 歷史驗證報告 |
 
 ---
 
@@ -562,12 +589,17 @@ npm run lint:amo
 
 ## 版本資訊
 
-目前版本：**v0.9.4**  
-Firefox Add-ons：**已正式上架** — [前往官方商店安裝](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)  
-目前 repository / source 為 **v0.9.4**；商店版需在新版上傳並通過 Mozilla 審核後才會同步.
+目前版本：**v0.9.8**
+
+Firefox Add-ons：**已正式上架** — [前往官方商店安裝](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/)
+
+目前 repository / source 為 **v0.9.8**；此版本尚未提交 Mozilla 審核，商店版請以官方頁面顯示的版本為準。
 
 近期重點：
 
+- **v0.9.8** — Export & Transfer 整合至 ChatGPT 頂部標題列；淺色／深色主題即時同步至相關介面
+- **v0.9.7** — 自訂提示語移除 30 則硬上限；新增完整 JSON 備份與依 ID 合併匯入
+- **v0.9.6** — 偵測 ChatGPT 錯誤重試按鈕並自動點擊；每輪最多 5 次、至少間隔 4 秒
 - **v0.9.4** — 最新檔案列新增逐檔下載 spinner、成功勾勾、失敗圖示與錯誤提示
 - **v0.9.3** — 最新檔案列改為直向堆疊；移除橫向捲動，過多檔案改為區塊內垂直捲動
 - **v0.9.2** — 生成圖片加入最新內容列；同一輪生成／整理檔案狀態不再重置計時
@@ -592,9 +624,9 @@ Firefox Add-ons：**已正式上架** — [前往官方商店安裝](https://add
 
 ## English Summary
 
-**ChatGPT Queue Sender** is a local-first Firefox extension for the ChatGPT web interface. It is officially available on [Firefox Add-ons](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/) and adds a conversation-scoped prompt queue, reusable saved prompts, completion alerts, Markdown export, a Beta ZIP conversation archive with selected attachments, and handoff tools.
+**ChatGPT Queue Sender v0.9.8** is a local-first Firefox extension for the ChatGPT web interface. It is officially available on [Firefox Add-ons](https://addons.mozilla.org/zh-TW/firefox/addon/chatgpt%E4%BD%87%E5%88%97%E7%99%BC%E9%80%81/) and adds a conversation-scoped prompt queue, automatic retry for visible ChatGPT generation errors, reusable saved prompts with JSON backup/import, completion alerts, Markdown export, a Beta ZIP conversation archive with selected attachments, and handoff tools.
 
-The extension waits for the current ChatGPT response to actually finish before submitting the next queued prompt. v0.8.6 guards against long coding/tool tasks where the native Send button may return early. v0.8.7 adds one-time scheduled sends: long-press Add to queue, choose a local date/time, and Firefox alarms will trigger the bound ChatGPT tab in the background.
+The extension waits for the current ChatGPT response to actually finish before submitting the next queued prompt. v0.9.6 adds bounded automatic retry when ChatGPT exposes an explicit Retry button (up to five attempts per response, at least four seconds apart). v0.9.7 adds full saved-prompt JSON backup and merge-based import. v0.9.8 places Export & Transfer in ChatGPT's top header action row when available and synchronizes the extension UI with ChatGPT's light/dark theme.
 
 Key points:
 
@@ -602,7 +634,9 @@ Key points:
 - One-time scheduled sends with background alarms and success/failure notifications
 - Multi-tab lease protection
 - Conservative completion detection
-- Saved prompt library
+- Bounded automatic retry for explicit ChatGPT error / Retry controls (up to five attempts per response, at least four seconds apart)
+- Saved prompt library with JSON backup and merge import; no fixed 30-item cap
+- ChatGPT header placement for Export & Transfer and live light/dark theme synchronization
 - Configurable completion sound/notification settings; scheduled-send result notifications are always local
 - Direct-download button beside ChatGPT-provided file citations
 - Markdown export
